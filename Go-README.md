@@ -8,7 +8,7 @@
 
 [Interface-Methods](#interface-methods)
 
-[Measure Time Taken To Execute A Function](#measure-time)
+[Measure Time Taken To Execute A Function](#measure-time-taken-to-execute-a-function)
 
 [Query Packages Modules Dependeny](#query-packages-modules-dependeny)
 
@@ -212,7 +212,7 @@ Sending email to Dirk with content Welcome Email user!
 Sending SMS to Justin with content Welcome SMS user!
 ```
 
-#### [Measure Time Taken To Execute A Function](#measure-time)
+#### [Measure Time Taken To Execute A Function](#measure-time-taken-to-execute-a-function)
 ```go
 package main
 

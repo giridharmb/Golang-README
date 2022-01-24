@@ -4,6 +4,8 @@
 
 [Check If String Is JSON](#Check-If-String-Is-JSON)
 
+[Check If String Exists In Slice](#Check-If-String-Exists-In-Slice)
+
 #### [Check Data Type](#Check-Data-Type)
 
 How to check the type of a value in Go
@@ -111,7 +113,7 @@ isJSON(["x3", {"x33":"y33"}]) = false
 Program exited.
 ```
 
-#### Check If String Exists In Slice
+#### [Check If String Exists In Slice](#Check-If-String-Exists-In-Slice)
 
 ```go
 package main

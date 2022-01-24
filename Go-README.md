@@ -1,6 +1,6 @@
 ### Golang Snippets
 
-[Check If String Is JSON](#string-json)
+[Check If String Is JSON](#Check If String Is JSON)
 
 #### How to check the type of a value in Go
 
@@ -36,7 +36,8 @@ type of d is []int
 type of e is map[string]string
 ```
 
-Check If String Is JSON(#string-json) 
+
+## Check If String Is JSON 
 
 ```go
 package main

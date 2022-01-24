@@ -12,6 +12,8 @@
 
 [Query Packages Modules Dependeny](#query-packages-modules-dependeny)
 
+[Sys-Log](#sys-log)
+
 [MongoDB Cancel With Context](#MongoDB-Cancel-With-Context)
 
 #### [Check Data Type](#Check-Data-Type)
@@ -242,6 +244,23 @@ Output:
 # go run main.go
 
 doSomething took 2.00109075s
+```
+
+#### [Sys-Log](#sys-log)
+```go
+package main
+
+import "log/syslog"
+import "log"
+
+func main() {
+	syslogger, err := syslog.New(syslog.LOG_DEBUG, "go_syslog")
+	if err != nil {
+		log.Fatalf("could not initialize go_syslog : %v", err.Error())
+	}
+	log.SetOutput(syslogger)
+	log.Printf("Log Entry")
+}
 ```
 
 #### [Query Packages Modules Dependeny](#query-packages-modules-dependeny)

@@ -103,6 +103,43 @@ isJSON(["x3", {"x33":"y33"}]) = false
 Program exited.
 ```
 
+#### Check If String Exists In Slice
+
+```go
+package main
+
+import (
+	"fmt"
+)
+
+// contains checks if a string is present in
+// a slice
+func contains(s []string, str string) bool {
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+
+	return false
+}
+
+func main() {
+	s := []string{"James", "Wagner", "Christene", "Mike"}
+	fmt.Println(contains(s, "James"))
+	fmt.Println(contains(s, "Jack"))
+}
+```
+
+#### Output
+
+```
+true
+false
+
+Program exited.
+```
+
 #### MongoDB Cancel With Context
 
 ```go

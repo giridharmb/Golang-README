@@ -6,7 +6,7 @@
 
 [Check If String Exists In Slice](#Check-If-String-Exists-In-Slice)
 
-[Query Packages-Modules-Dependeny](#Query-Packages-Modules-Dependeny)
+[Query-Packages-Modules-Dependeny](#Query-Packages-Modules-Dependeny)
 
 #### [Check Data Type](#Check-Data-Type)
 
@@ -152,7 +152,7 @@ false
 Program exited.
 ```
 
-[Query Packages-Modules-Dependeny](#Query-Packages-Modules-Dependeny)
+#### [Query-Packages-Modules-Dependeny](#Query-Packages-Modules-Dependeny)
 
 ```shell
 go list -f '{{join .Deps "\n"}}' | xargs go list -f '{{if not .Standard}}{{.ImportPath}}{{end}}'

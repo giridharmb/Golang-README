@@ -1,5 +1,7 @@
 ### Golang Snippets
 
+[string-json] Check If String Is JSON
+
 #### How to check the type of a value in Go
 
 ```go
@@ -24,7 +26,7 @@ func main() {
 }
 ```
 
-#### Output
+[string-json] #### Output
 
 ```
 type of a is string

@@ -8,6 +8,8 @@
 
 [Interface-Methods](#interface-methods)
 
+[Measure Time Taken To Execute A Function](#measure-time)
+
 [Query Packages Modules Dependeny](#query-packages-modules-dependeny)
 
 [MongoDB Cancel With Context](#MongoDB-Cancel-With-Context)
@@ -201,6 +203,47 @@ func main() {
 }
 ```
 
+```
+Output:
+
+# go run main.go
+
+Sending email to Dirk with content Welcome Email user!
+Sending SMS to Justin with content Welcome SMS user!
+```
+
+#### [Measure Time Taken To Execute A Function](#measure-time)
+```go
+package main
+
+import "time"
+import "fmt"
+
+func elapsed(what string) func() {
+	start := time.Now()
+	return func() {
+		fmt.Printf("\n%s took %v\n", what, time.Since(start))
+	}
+}
+
+func doSomething() {
+	defer elapsed("doSomething")()
+	time.Sleep(2 * time.Second)
+}
+
+func main() {
+	doSomething()
+}
+```
+
+```
+Output:
+
+# go run main.go
+
+doSomething took 2.00109075s
+```
+
 #### [Query Packages Modules Dependeny](#query-packages-modules-dependeny)
 
 ```shell
@@ -218,30 +261,11 @@ cloud.google.com/go/logging/internal
 github.com/bradfitz/gomemcache/memcache
 github.com/go-stack/stack
 github.com/golang/groupcache/lru
-github.com/golang/protobuf/proto
-github.com/golang/protobuf/ptypes
-github.com/golang/protobuf/ptypes/any
-github.com/golang/protobuf/ptypes/duration
-github.com/golang/protobuf/ptypes/struct
-github.com/golang/protobuf/ptypes/timestamp
-github.com/golang/snappy
-github.com/google/go-cmp/cmp
-github.com/google/go-cmp/cmp/internal/diff
-github.com/google/go-cmp/cmp/internal/flags
-github.com/google/go-cmp/cmp/internal/function
-github.com/google/go-cmp/cmp/internal/value
-github.com/googleapis/gax-go/v2
-github.com/gorilla/mux
-github.com/jackc/chunkreader/v2
-github.com/jackc/pgconn
-github.com/jackc/pgconn/internal/ctxwatch
-github.com/jackc/pgconn/stmtcache
-github.com/jackc/pgio
+...
+...
+...
 github.com/jackc/pgpassfile
 github.com/jackc/pgproto3/v2
-...
-...
-...
 ```
 
 ```shell
@@ -259,26 +283,8 @@ cloud.google.com/go/logging
 cloud.google.com/go/logging/apiv2
 cloud.google.com/go/logging/internal
 compress/flate
-compress/gzip
-compress/zlib
-container/list
-context
-crypto
-crypto/aes
-crypto/cipher
-crypto/des
-crypto/dsa
-crypto/ecdsa
-crypto/ed25519
-crypto/ed25519/internal/edwards25519
-crypto/elliptic
-crypto/hmac
-crypto/internal/randutil
-crypto/internal/subtle
-crypto/md5
-crypto/rand
-crypto/rc4
-crypto/rsa
+...
+...
 crypto/sha1
 crypto/sha256
 crypto/sha512
@@ -292,18 +298,12 @@ database/sql/driver
 encoding
 encoding/asn1
 encoding/base64
-encoding/binary
-encoding/hex
-encoding/json
+...
+...
 encoding/pem
 errors
 flag
 fmt
-github.com/bradfitz/gomemcache/memcache
-github.com/go-stack/stack
-github.com/golang/groupcache/lru
-...
-...
 ```
 
 #### [MongoDB Cancel With Context](#MongoDB-Cancel-With-Context)
@@ -343,8 +343,7 @@ func close(client *mongo.Client, ctx context.Context,
 // resource associated with it.
 func connect(uri string) (*mongo.Client, context.Context, context.CancelFunc, error) {
 
-	ctx, cancel := context.WithTimeout(context.Background(),
-		30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
 	return client, ctx, cancel, err
 }

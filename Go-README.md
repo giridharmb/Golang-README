@@ -36,7 +36,7 @@ type of d is []int
 type of e is map[string]string
 ```
 
-[Check If String Is JSON] (#string-json)
+Check If String Is JSON(#string-json) 
 
 ```go
 package main

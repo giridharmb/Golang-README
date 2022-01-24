@@ -34,6 +34,75 @@ type of d is []int
 type of e is map[string]string
 ```
 
+#### Check If String Is JSON
+
+```go
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+func isJSONString(s string) bool {
+	var js string
+	return json.Unmarshal([]byte(s), &js) == nil
+
+}
+
+func isJSON(s string) bool {
+	var js map[string]interface{}
+	return json.Unmarshal([]byte(s), &js) == nil
+
+}
+
+func main() {
+	var tests = []string{
+		`"Platypus"`,
+		`Platypus`,
+		`{"id1":"1"}`,
+		`{"id2":2}`,
+		`{"id3":[1,2,3]}`,
+		`[{"x1":"y1"}, {"x2":"y2"}]`,
+		`["x3", {"x33":"y33"}]`,
+	}
+
+	for _, t := range tests {
+		fmt.Printf("isJSONString(%s) = %v\n", t, isJSONString(t))
+		fmt.Printf("isJSON(%s) = %v\n\n", t, isJSON(t))
+	}
+
+}
+```
+#### Output
+
+```
+Output:
+
+isJSONString("Platypus") = true
+isJSON("Platypus") = false
+
+isJSONString(Platypus) = false
+isJSON(Platypus) = false
+
+isJSONString({"id1":"1"}) = false
+isJSON({"id1":"1"}) = true
+
+isJSONString({"id2":2}) = false
+isJSON({"id2":2}) = true
+
+isJSONString({"id3":[1,2,3]}) = false
+isJSON({"id3":[1,2,3]}) = true
+
+isJSONString([{"x1":"y1"}, {"x2":"y2"}]) = false
+isJSON([{"x1":"y1"}, {"x2":"y2"}]) = false
+
+isJSONString(["x3", {"x33":"y33"}]) = false
+isJSON(["x3", {"x33":"y33"}]) = false
+
+Program exited.
+```
+
 #### MongoDB Cancel With Context
 
 ```go

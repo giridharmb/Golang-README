@@ -26,7 +26,7 @@ func main() {
 }
 ```
 
-[Output](#string-json)
+Output
 
 ```
 type of a is string
@@ -36,7 +36,7 @@ type of d is []int
 type of e is map[string]string
 ```
 
-#### Check If String Is JSON
+[Check If String Is JSON] (#string-json)
 
 ```go
 package main

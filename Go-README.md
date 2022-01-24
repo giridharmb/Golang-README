@@ -6,6 +6,8 @@
 
 [Check If String Exists In Slice](#Check-If-String-Exists-In-Slice)
 
+[Interface-Methods](#interface-methods)
+
 [Query Packages Modules Dependeny](#query-packages-modules-dependeny)
 
 [MongoDB Cancel With Context](#MongoDB-Cancel-With-Context)
@@ -152,6 +154,51 @@ true
 false
 
 Program exited.
+```
+
+#### [Interface-Methods](#interface-methods)
+```go
+package main
+
+import "fmt"
+
+type User struct {
+	Name     string
+	Email    string
+	Notifier UserNotifier
+}
+
+type UserNotifier interface {
+	SendMessage(user *User, message string) error
+}
+
+type EmailNotifier struct {
+}
+
+type SmsNotifier struct {
+}
+
+func (user *User) notify(message string) error {
+	return user.Notifier.SendMessage(user, message)
+}
+
+func (notifier SmsNotifier) SendMessage(user *User, message string) error {
+	_, err := fmt.Printf("Sending SMS to %s with content %s\n", user.Name, message)
+	return err
+}
+
+func (notifier EmailNotifier) SendMessage(user *User, message string) error {
+	_, err := fmt.Printf("Sending email to %s with content %s\n", user.Name, message)
+	return err
+}
+
+func main() {
+	user1 := User{"Dirk", "dirk@email.com", EmailNotifier{}}
+	user2 := User{"Justin", "bieber@email.com", SmsNotifier{}}
+
+	user1.notify("Welcome Email user!")
+	user2.notify("Welcome SMS user!")
+}
 ```
 
 #### [Query Packages Modules Dependeny](#query-packages-modules-dependeny)

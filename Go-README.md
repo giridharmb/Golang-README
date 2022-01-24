@@ -8,7 +8,7 @@
 
 [Query Packages Modules Dependeny](#Query-Packages-Modules-Dependeny)
 
-[MongoDB Cancel With Context](#MongoDBCancelWithContext)
+[MongoDB Cancel With Context](#Mongo-DB-Cancel-With-Context)
 
 #### [Check Data Type](#Check-Data-Type)
 
@@ -259,7 +259,7 @@ github.com/golang/groupcache/lru
 ...
 ```
 
-#### [MongoDB Cancel With Context](#MongoDBCancelWithContext)
+#### [MongoDB Cancel With Context](#Mongo-DB-Cancel-With-Context)
 
 ```go
 package main

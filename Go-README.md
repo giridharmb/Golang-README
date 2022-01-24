@@ -6,7 +6,7 @@
 
 [Check If String Exists In Slice](#Check-If-String-Exists-In-Slice)
 
-[Query Packages Modules Dependeny](#Query-Packages-Modules-Dependeny)
+[Query Packages Modules Dependeny](#query-packages-modules-dependeny)
 
 [MongoDB Cancel With Context](#MongoDB-Cancel-With-Context)
 
@@ -154,7 +154,7 @@ false
 Program exited.
 ```
 
-#### [Query Packages Modules Dependeny](#Query-Packages-Modules-Dependeny)
+#### [Query Packages Modules Dependeny](#query-packages-modules-dependeny)
 
 ```shell
 go list -f '{{join .Deps "\n"}}' | xargs go list -f '{{if not .Standard}}{{.ImportPath}}{{end}}'

@@ -1,8 +1,12 @@
 ### Golang Snippets
 
+[Check Data Type](#Check-Data-Type)
+
 [Check If String Is JSON](#Check-If-String-Is-JSON)
 
-#### How to check the type of a value in Go
+#### [Check Data Type](#Check-Data-Type)
+
+How to check the type of a value in Go
 
 ```go
 package main
@@ -37,6 +41,8 @@ type of e is map[string]string
 ```
 
 #### [Check If String Is JSON](#Check-If-String-Is-JSON)
+
+How To Check If Given String Is A Valid JSON
 
 ```go
 package main

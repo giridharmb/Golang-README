@@ -16,6 +16,10 @@
 
 [MongoDB Cancel With Context](#MongoDB-Cancel-With-Context)
 
+[Client And Server WebSockets](#client-and-server-websockets)
+
+<hr/>
+
 #### [Check Data Type](#Check-Data-Type)
 
 How to check the type of a value in Go
@@ -479,4 +483,255 @@ func main() {
 		fmt.Println(id)
 	}
 }
+```
+
+#### [Client And Server WebSockets](#client-and-server-websockets)
+
+## Golang – Using Gorilla Websockets
+
+```
+In this tutorial, we’ll be looking at how we can use the 
+Gorilla Websocket package in Golang.
+
+This library provides us with easy to write websocket 
+client/servers in Go. It has a working production quality 
+Go implementation of the websocket protocol, which enables 
+us to deal with stateful http connections using websockets.
+```
+
+#### Installing Gorilla Websocket Go Package
+
+```
+go get github.com/gorilla/websocket
+```
+
+#### Websocket application Design
+
+```
+Before going on to any examples, let’s first design a 
+rough layout of what needs to be done.
+
+Any application using the websocket protocol generally 
+needs a client and a server.
+
+The server program binds to a port on the server and starts 
+listening for any websocket connections. The connection related 
+details are defined by the websocket protocol, which acts over a 
+raw HTTP connection.
+
+The client program tries to make a connection with the server 
+using a websocket URL. Note that the client program does NOT need 
+to be implemented using Golang, although Gorilla provides us with 
+APIs for writing clients.
+
+If you have a web application using a separate frontend, generally 
+the websocket client would be implemented in that language (Javascript, etc)
+
+However, for the purpose of illustration, we will be writing BOTH 
+the client and the server programs in Go.
+
+Now let’s get our client-server architecture running!
+```
+
+#### Using Gorilla Websockets – Creating our server
+
+```
+The websocket server will be implemented over a regular http server. 
+We’ll be using net/http for serving raw HTTP connections.
+
+Now in server.go, let’s write our regular HTTP server and add a 
+socketHandler() function to handle the websocket logic.
+```
+
+#### server.go
+
+```golang
+// server.go
+package main
+ 
+import (
+    "log"
+    "net/http"
+    "time"
+ 
+    "github.com/gorilla/websocket"
+)
+ 
+var upgrader = websocket.Upgrader{} // use default options
+ 
+func socketHandler(w http.ResponseWriter, r *http.Request) {
+    // Upgrade our raw HTTP connection to a websocket based one
+    conn, err := upgrader.Upgrade(w, r, nil)
+    if err != nil {
+        log.Print("Error during connection upgradation:", err)
+        return
+    }
+    defer conn.Close()
+ 
+    // The event loop
+    for {
+        messageType, message, err := conn.ReadMessage()
+        if err != nil {
+            log.Println("Error during message reading:", err)
+            break
+        }
+        log.Printf("Received: %s", message)
+        err = conn.WriteMessage(messageType, message)
+        if err != nil {
+            log.Println("Error during message writing:", err)
+            break
+        }
+    }
+}
+ 
+func home(w http.ResponseWriter, r *http.Request) {
+    fmt.Fprintf(w, "Index Page")
+}
+ 
+func main() {
+    http.HandleFunc("/socket", socketHandler)
+    http.HandleFunc("/", home)
+    log.Fatal(http.ListenAndServe("localhost:8080", nil))
+}
+```
+
+```
+The magic that gorilla does is to convert these raw HTTP 
+connections into a stateful websocket connection, using a 
+connection upgradation. This is why the library uses a struct 
+called Upgrader to help us with that.
+
+We use a global upgrader variable to help us convert any 
+incoming HTTP connection into websocket protocol, via 
+upgrader.Upgrade(). This will return to us a *websocket.Connection, 
+which we can now use to deal with the websocket connection.
+
+The server reads messages using conn.ReadMessage() and writes them 
+back using conn.WriteMessage()
+
+This server simply echoes any incoming websocket messages back 
+to the client, so this shows how websockets can be used for 
+full-duplex communication.
+
+Now let’s move onto the client implementation at client.go.
+```
+
+#### Now let’s move onto the client implementation at client.go.
+
+```
+We will be writing the client also using Gorilla. 
+This simple client will keep emitting messages 
+after every 1 second. If our entire system works as 
+intended, the server will receive packets spaced at 
+an interval of 1 second and reply the same message back.
+
+The client will also have functionality to receive 
+incoming websocket packets. In our program, we will 
+have a separate goroutine handler receiveHandler which 
+listens for these incoming packets.
+```
+
+#### client.go
+
+```golang
+// client.go
+package main
+
+import (
+	"log"
+	"os"
+	"os/signal"
+	"time"
+
+	"github.com/gorilla/websocket"
+)
+
+var done chan interface{}
+var interrupt chan os.Signal
+
+func receiveHandler(connection *websocket.Conn) {
+	defer close(done)
+	for {
+		_, msg, err := connection.ReadMessage()
+		if err != nil {
+			log.Println("Error in receive:", err)
+			return
+		}
+		log.Printf("Received: %s\n", msg)
+	}
+}
+
+func main() {
+	done = make(chan interface{})    // Channel to indicate that the receiverHandler is done
+	interrupt = make(chan os.Signal) // Channel to listen for interrupt signal to terminate gracefully
+
+	signal.Notify(interrupt, os.Interrupt) // Notify the interrupt channel for SIGINT
+
+	socketUrl := "ws://localhost:8080" + "/socket"
+	conn, _, err := websocket.DefaultDialer.Dial(socketUrl, nil)
+	if err != nil {
+		log.Fatal("Error connecting to Websocket Server:", err)
+	}
+	defer conn.Close()
+	go receiveHandler(conn)
+
+	// Our main loop for the client
+	// We send our relevant packets here
+	for {
+		select {
+		case <-time.After(time.Duration(1) * time.Millisecond * 1000):
+			// Send an echo packet every second
+			err := conn.WriteMessage(websocket.TextMessage, []byte("Hello from GolangDocs!"))
+			if err != nil {
+				log.Println("Error during writing to websocket:", err)
+				return
+			}
+
+		case <-interrupt:
+			// We received a SIGINT (Ctrl + C). Terminate gracefully...
+			log.Println("Received SIGINT interrupt signal. Closing all pending connections")
+
+			// Close our websocket connection
+			err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			if err != nil {
+				log.Println("Error during closing websocket:", err)
+				return
+			}
+
+			select {
+			case <-done:
+				log.Println("Receiver Channel Closed! Exiting....")
+			case <-time.After(time.Duration(1) * time.Second):
+				log.Println("Timeout in closing receiving channel. Exiting....")
+			}
+			return
+		}
+	}
+}
+```
+
+```
+If you observe the code, you’ll notice that I created two channels done 
+and interrupt for communication between receiveHandler() and main().
+
+We use an infinite loop for listening to events through channels 
+using select. We write a message using conn.WriteMessage() every second. 
+If the interrupt signal is activated, any pending connections are closed 
+and we exit gracefully!
+```
+
+```
+The nested select is there to ensure two things:
+
+- If the receiveHandler channel exits, the channel 'done' will be closed. 
+  This is the first case <-done condition
+
+- If the 'done' channel does NOT close, there will be a timeout 
+  after 1 second, so the program WILL exit after the 1 second timeout
+
+By carefully handling all cases using channels, select, 
+you can have a minimal architecture which can be extended easily.
+
+Let’s finally look at the output we get, on running both the 
+client and the server!
 ```

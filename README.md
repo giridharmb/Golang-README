@@ -18,6 +18,8 @@
 
 [Client And Server WebSockets](#client-and-server-websockets)
 
+[Read And Pretty Print JSON File](#read-and-pretty-print-json-file)
+
 <hr/>
 
 #### [Check Data Type](#Check-Data-Type)
@@ -734,4 +736,109 @@ you can have a minimal architecture which can be extended easily.
 
 Let’s finally look at the output we get, on running both the 
 client and the server!
+```
+
+#### [Read And Pretty Print JSON File](#read-and-pretty-print-json-file)
+
+```golang
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"os"
+)
+
+func main() {
+
+	configFile := "config.json"
+
+	// Open our jsonFile
+	jsonFile, err := os.Open("config.json")
+	// if we os.Open returns an error then handle it
+	if err != nil {
+		fmt.Printf("\ncould not open json file : (%v) : %v", configFile, err.Error())
+		return
+	}
+	fmt.Printf("\nsuccessfully opened json file (%v)\n", configFile)
+	// defer the closing of our jsonFile so that we can parse it later on
+	defer jsonFile.Close()
+
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+
+	var result map[string]interface{}
+
+	err = json.Unmarshal([]byte(byteValue), &result)
+	if err != nil {
+		fmt.Printf("\nerror : could not unmarshal json : %v", err.Error())
+		return
+	}
+
+	myValue, ok := result["my_key"].(string)
+	if ok {
+		fmt.Printf("\n[my_key] : (%v)\n", myValue)
+	}
+
+	myFloat, ok := result["my_key_float"].(float64)
+	if ok {
+		fmt.Printf("\n[my_key_float] : (%v)\n", myFloat)
+	}
+
+	myList, ok := result["my_list"].([]interface{})
+	if ok {
+		fmt.Printf("\n[my_list] : (%v)\n", myList)
+	}
+
+	myNestedMap, ok := result["my_nested_data_key"].(map[string]interface{})
+	if ok {
+		fmt.Printf("\n[my_nested_data_key] : (%v)\n", myNestedMap)
+	}
+
+	// -------------- pretty print the json data | start ----------------
+
+	dataBytes, err := json.MarshalIndent(result, "", "    ")
+	if err != nil {
+		fmt.Printf("\nerror : could not MarshalIndent json : %v", err.Error())
+		return
+	}
+	fmt.Printf("\n\njson:\n\n%v\n", string(dataBytes))
+	// -------------- pretty print the json data | end ----------------
+}
+
+/*
+
+Output:
+
+# go run main.go
+
+successfully opened json file (config.json)
+
+[my_key] : (my_value)
+
+[my_key_float] : (20.555)
+
+[my_list] : ([1 2 3 4])
+
+[my_nested_data_key] : (map[my_nested_data_value:my_nested_value])
+
+
+json:
+
+{
+    "my_key": "my_value",
+    "my_key_float": 20.555,
+    "my_key_numeric": 10,
+    "my_list": [
+        1,
+        2,
+        3,
+        4
+    ],
+    "my_nested_data_key": {
+        "my_nested_data_value": "my_nested_value"
+    }
+}
+
+*/
 ```

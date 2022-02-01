@@ -22,6 +22,8 @@
 
 [Pretty Print JSON File](#pretty-print-json-file)
 
+[PostgreSQL and JSON](#postgresql-and-json)
+
 <hr/>
 
 #### [Check Data Type](#Check-Data-Type)
@@ -952,5 +954,248 @@ func main() {
         log.Fatal(err)
     }
     fmt.Println(res)
+}
+```
+
+#### [PostgreSQL and JSON](#postgresql-and-json)
+
+```sql
+-- Create a table with a JSONB column.
+CREATE TABLE items (
+    id SERIAL PRIMARY KEY,
+    attrs JSONB
+);
+
+-- You can insert any well-formed json input into the column. Note that only
+-- lowercase `true` and `false` spellings are accepted.
+INSERT INTO items (attrs) VALUES ('{
+   "name": "Pasta",
+   "ingredients": ["Flour", "Eggs", "Salt", "Water"],
+   "organic": true,
+   "dimensions": {
+      "weight": 500.00
+   }
+}');
+
+-- Create an index on all key/value pairs in the JSONB column.
+CREATE INDEX idx_items_attrs ON items USING gin (attrs);
+
+-- Create an index on a specific key/value pair in the JSONB column.
+CREATE INDEX idx_items_attrs_organic ON items USING gin ((attrs->'organic'));
+
+-- The -> operator is used to get the value for a key. The returned value has
+-- the type JSONB.
+SELECT attrs->'dimensions' FROM items;
+SELECT attrs->'dimensions'->'weight' FROM items;
+
+-- Or you can use ->> to do the same thing, but this returns a TEXT value
+-- instead.
+SELECT attrs->>'dimensions' FROM items;
+
+-- You can use the returned values as normal, although you may need to type
+-- cast them first.
+SELECT * FROM items WHERE attrs->>'name' ILIKE 'p%';
+SELECT * FROM items WHERE (attrs->'dimensions'->>'weight')::numeric < 100.00;
+
+-- Use ? to check for the existence of a specific key.
+SELECT * FROM items WHERE attrs ? 'ingredients';
+
+-- The ? operator only works at the top level. If you want to check for the
+-- existence of a nested key you can do this:
+SELECT * FROM items WHERE attrs->'dimensions' ? 'weight';
+
+-- The ? operator can also be used to check for the existence of a specific
+-- text value in json arrays.
+SELECT * FROM items WHERE attrs->'ingredients' ? 'Salt';
+
+-- Use @> to check if the JSONB column contains some specific json. This can
+-- be useful to filter for a specific key/value pair like so:
+SELECT * FROM items WHERE attrs @> '{"organic": true}'::jsonb;
+SELECT * FROM items WHERE attrs @> '{"dimensions": {"weight": 10}}'::jsonb;
+
+-- Note that @> looks for *containment*, not for an exact match. The
+-- followingquery will return records which have both "Flour" and "Water"
+-- as ingredients, rather than *only* "Flour" and "Water" as the ingredients.
+SELECT * FROM items WHERE attrs @> '{"ingredients": ["Flour", "Water"]}'::jsonb;
+```
+
+Go Code To Query
+
+`Known JSON fields`
+
+When the fields in a JSON/JSONB column are known in advance, you can 
+map the contents of the JSON/JSONB column to and from a struct. 
+To do this, you'll need make sure the struct implements:
+
+- The driver.Valuer interface, such that it marshals the object into a JSON byte slice that can be understood by the database.
+
+- The sql.Scanner interface, such that it unmarshals a JSON byte slice from the database into the struct fields.
+
+```golang
+package main
+
+import (
+    "database/sql"
+    "database/sql/driver"
+    "encoding/json"
+    "errors"
+    "log"
+
+    _ "github.com/lib/pq"
+)
+
+type Item struct {
+    ID    int
+    Attrs Attrs
+}
+
+// The Attrs struct represents the data in the JSON/JSONB column. We can use
+// struct tags to control how each field is encoded.
+type Attrs struct {
+    Name        string   `json:"name,omitempty"`
+    Ingredients []string `json:"ingredients,omitempty"`
+    Organic     bool     `json:"organic,omitempty"`
+    Dimensions  struct {
+        Weight float64 `json:"weight,omitempty"`
+    } `json:"dimensions,omitempty"`
+}
+
+// Make the Attrs struct implement the driver.Valuer interface. This method
+// simply returns the JSON-encoded representation of the struct.
+func (a Attrs) Value() (driver.Value, error) {
+    return json.Marshal(a)
+}
+
+// Make the Attrs struct implement the sql.Scanner interface. This method
+// simply decodes a JSON-encoded value into the struct fields.
+func (a *Attrs) Scan(value interface{}) error {
+    b, ok := value.([]byte)
+    if !ok {
+        return errors.New("type assertion to []byte failed")
+    }
+
+    return json.Unmarshal(b, &a)
+}
+
+func main() {
+    db, err := sql.Open("postgres", "postgres://user:pass@localhost/db")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Initialize a new Attrs struct and add some values.
+    attrs := new(Attrs)
+    attrs.Name = "Pesto"
+    attrs.Ingredients = []string{"Basil", "Garlic", "Parmesan", "Pine nuts", "Olive oil"}
+    attrs.Organic = false
+    attrs.Dimensions.Weight = 100.00
+
+    // The database driver will call the Value() method and and marshall the
+    // attrs struct to JSON before the INSERT.
+    _, err = db.Exec("INSERT INTO items (attrs) VALUES($1)", attrs)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Similarly, we can also fetch data from the database, and the driver
+    // will call the Scan() method to unmarshal the data to an Attr struct.
+    item := new(Item)
+    err = db.QueryRow("SELECT id, attrs FROM items ORDER BY id DESC LIMIT 1").Scan(&item.ID, &item.Attrs)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // You can then use the struct fields as normal...
+    weightKg := item.Attrs.Dimensions.Weight / 1000
+    log.Printf("Item: %d, Name: %s, Weight: %.2fkg", item.ID, item.Attrs.Name, weightKg)
+}
+```
+
+`Unknown JSON fields`
+
+The above pattern works great if you know in advance what keys and 
+values your JSON/JSONB data will contain. And it has the major advantage 
+of being type safe.
+
+For the times that you don't know this in advance (for example, the data 
+contains user-generated keys and values) you can map the contents of the 
+JSON/JSONB column to and from a map[string]interface{} instead. The big 
+downside of this is that you will need to type assert any values that you 
+retrieve from the database in order to use them.
+
+```golang
+package main
+
+import (
+    "database/sql"
+    "database/sql/driver"
+    "encoding/json"
+    "errors"
+    "log"
+
+    _ "github.com/lib/pq"
+)
+
+type Item struct {
+    ID    int
+    Attrs Attrs
+}
+
+type Attrs map[string]interface{}
+
+func (a Attrs) Value() (driver.Value, error) {
+    return json.Marshal(a)
+}
+
+func (a *Attrs) Scan(value interface{}) error {
+    b, ok := value.([]byte)
+    if !ok {
+        return errors.New("type assertion to []byte failed")
+    }
+
+    return json.Unmarshal(b, &a)
+}
+
+func main() {
+    db, err := sql.Open("postgres", "postgres://user:pass@localhost/db")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    item := new(Item)
+    item.Attrs = Attrs{
+        "name":        "Passata",
+        "ingredients": []string{"Tomatoes", "Onion", "Olive oil", "Garlic"},
+        "organic":     true,
+        "dimensions": map[string]interface{}{
+            "weight": 250.00,
+        },
+    }
+
+    _, err = db.Exec("INSERT INTO items (attrs) VALUES($1)", item.Attrs)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    item = new(Item)
+    err = db.QueryRow("SELECT id, attrs FROM items ORDER BY id DESC LIMIT 1").Scan(&item.ID, &item.Attrs)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    name, ok := item.Attrs["name"].(string)
+    if !ok {
+        log.Fatal("unexpected type for name")
+    }
+    dimensions, ok := item.Attrs["dimensions"].(map[string]interface{})
+    if !ok {
+        log.Fatal("unexpected type for dimensions")
+    }
+    weight, ok := dimensions["weight"].(float64)
+    if !ok {
+        log.Fatal("unexpected type for weight")
+    }
+    weightKg := weight / 1000
+    log.Printf("%s: %.2fkg", name, weightKg)
 }
 ```

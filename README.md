@@ -20,6 +20,8 @@
 
 [Read And Pretty Print JSON File](#read-and-pretty-print-json-file)
 
+[Pretty Print JSON File](#pretty-print-json-file)
+
 <hr/>
 
 #### [Check Data Type](#Check-Data-Type)
@@ -841,4 +843,114 @@ json:
 }
 
 */
+```
+
+#### [Pretty Print JSON File](#pretty-print-json-file)
+
+Method-1
+
+```golang
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "log"
+)
+
+func PrettyStruct(data interface{}) (string, error) {
+    val, err := json.MarshalIndent(data, "", "    ")
+    if err != nil {
+        return "", err
+    }
+    return string(val), nil
+}
+
+type Fruit struct {
+    Name  string `json:"name"`
+    Color string `json:"color"`
+}
+
+func main() {
+    fruit := Fruit{
+        Name:  "Strawberry",
+        Color: "red",
+    }
+    res, err := PrettyStruct(fruit)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(res)
+}
+```
+
+Method-2
+
+```golang
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "io"
+    "log"
+)
+
+func PrettyEncode(data interface{}, out io.Writer) error {
+    enc := json.NewEncoder(out)
+    enc.SetIndent("", "    ")
+    if err := enc.Encode(data); err != nil {
+        return err
+    }
+    return nil
+}
+
+type Fruit struct {
+    Name  string `json:"name"`
+    Color string `json:"color"`
+}
+
+func main() {
+    fruit := Fruit{
+        Name:  "Strawberry",
+        Color: "red",
+    }
+    var buffer bytes.Buffer
+    err := PrettyEncode(fruit, &buffer)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(buffer.String())
+}
+```
+
+Method-3
+
+```golang
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "log"
+)
+
+func PrettyString(str string) (string, error) {
+    var prettyJSON bytes.Buffer
+    if err := json.Indent(&prettyJSON, []byte(str), "", "    "); err != nil {
+        return "", err
+    }
+    return prettyJSON.String(), nil
+}
+
+func main() {
+    fruitJSON := `{"name": "Strawberry", "color": "red"}`
+    res, err := PrettyString(fruitJSON)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(res)
+}
 ```

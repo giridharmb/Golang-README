@@ -24,6 +24,8 @@
 
 [PostgreSQL and JSON](#postgresql-and-json)
 
+[Read And Write To Channel](#read-and-write-to-channel)
+
 <hr/>
 
 #### [Check Data Type](#Check-Data-Type)
@@ -1198,4 +1200,157 @@ func main() {
     weightKg := weight / 1000
     log.Printf("%s: %.2fkg", name, weightKg)
 }
+```
+
+#### [Read And Write To Channel](#read-and-write-to-channel)
+
+```golang
+package main
+
+import (
+	"log"
+	"math/rand"
+	"sync"
+	"time"
+)
+
+/*
+What does this program do ?
+
+1. create a function 'getRandomNumber'
+	> which generates a random number between max(=300) and min(=100)
+
+2. create 3 different goroutines
+
+	goroutine-1:
+		> in a for loop:
+			> get a random number using 'getRandomNumber'
+			> put the value into channel 'channelSend'
+
+	goroutine-2:
+		> in a for loop:
+			> read the value from channel 'channelSend' , and
+			> insert the value into another channel 'channelReceive'
+
+	goroutine-3:
+		> in a for loop
+			> read the value from channel 'channelReceive'
+			> log the value on stdout.
+
+3. after MaxTimeSeconds(=10 secs) have been lapsed
+	> gracefully close all the channels
+	> then exit.
+*/
+
+var (
+	MaxTimeSeconds float64 = 10
+)
+
+func getRandomNumber() int {
+	max := 300
+	min := 100
+	rand.Seed(time.Now().UnixNano())
+	return rand.Intn(max-min) + min
+}
+
+func generateRandomAndPush(wg *sync.WaitGroup, myChannel chan int) {
+	defer wg.Done()
+	start := time.Now()
+	for {
+		myChannel <- getRandomNumber()
+		time.Sleep(2 * time.Second)
+		duration := time.Since(start)
+		totalTimeElapsed := duration.Seconds()
+		log.Printf("> total time elapsed : %v", totalTimeElapsed)
+		if totalTimeElapsed > MaxTimeSeconds {
+			close(myChannel)
+			log.Printf("@ channelSend is closed.")
+			return
+		}
+	}
+}
+
+func getFromChannelAndPush(wg *sync.WaitGroup, getChannel chan int, pushChannel chan int) {
+	defer wg.Done()
+	for {
+		receivedData, ok := <-getChannel
+		if !ok {
+			log.Printf("@ not more data from <-getChannel !")
+			close(pushChannel)
+			log.Printf("@ pushChannel is closed.")
+			return
+		} else {
+			pushChannel <- receivedData
+		}
+	}
+}
+
+func receiveData(wg *sync.WaitGroup, receiveFromChannel chan int, done chan bool) {
+	defer func() {
+		wg.Done()
+		done <- true
+	}()
+	for {
+		receivedData, ok := <-receiveFromChannel
+		if !ok {
+			log.Printf("@ no data from <-receiveFromChannel !")
+			return
+		}
+		log.Printf("> receivedData : %v", receivedData)
+	}
+}
+
+func main() {
+	channelSend := make(chan int)
+	channelReceive := make(chan int)
+
+	done := make(chan bool)
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go generateRandomAndPush(&wg, channelSend)
+
+	wg.Add(1)
+	go getFromChannelAndPush(&wg, channelSend, channelReceive)
+
+	wg.Add(1)
+	go receiveData(&wg, channelReceive, done)
+
+	log.Printf("waiting...")
+
+	wg.Wait()
+
+	log.Printf("done waiting !")
+
+	<-done
+
+	log.Printf("done <- true")
+}
+
+/*
+Sample Rnn:
+
+2009/11/10 23:00:00 waiting...
+2009/11/10 23:00:00 > receivedData : 100
+2009/11/10 23:00:02 > total time elapsed : 2
+2009/11/10 23:00:02 > receivedData : 277
+2009/11/10 23:00:04 > total time elapsed : 4
+2009/11/10 23:00:04 > receivedData : 150
+2009/11/10 23:00:06 > total time elapsed : 6
+2009/11/10 23:00:06 > receivedData : 156
+2009/11/10 23:00:08 > total time elapsed : 8
+2009/11/10 23:00:08 > receivedData : 117
+2009/11/10 23:00:10 > total time elapsed : 10
+2009/11/10 23:00:10 > receivedData : 286
+2009/11/10 23:00:12 > total time elapsed : 12
+2009/11/10 23:00:12 @ channelSend is closed.
+2009/11/10 23:00:12 @ not more data from <-channelSend !
+2009/11/10 23:00:12 @ channelReceive is closed.
+2009/11/10 23:00:12 @ no data from <-channelReceive !
+2009/11/10 23:00:12 done waiting !
+2009/11/10 23:00:12 done <- true
+
+Program exited.
+*/
 ```

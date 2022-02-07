@@ -36,21 +36,21 @@ How to check the type of a value in Go
 package main
 
 import (
-	"fmt"
+    "fmt"
 )
 
 func main() {
-	a, b, c := "yes", 20.6, false
-	d := []int{3, 4, 5, 6}
-	e := map[string]string{
-		"name":  "jake",
-		"email": "jake@example.com",
-	}
-	fmt.Printf("type of a is %T\n", a)
-	fmt.Printf("type of b is %T\n", b)
-	fmt.Printf("type of c is %T\n", c)
-	fmt.Printf("type of d is %T\n", d)
-	fmt.Printf("type of e is %T\n", e)
+    a, b, c := "yes", 20.6, false
+    d := []int{3, 4, 5, 6}
+    e := map[string]string{
+        "name":  "jake",
+        "email": "jake@example.com",
+    }
+    fmt.Printf("type of a is %T\n", a)
+    fmt.Printf("type of b is %T\n", b)
+    fmt.Printf("type of c is %T\n", c)
+    fmt.Printf("type of d is %T\n", d)
+    fmt.Printf("type of e is %T\n", e)
 }
 ```
 
@@ -72,37 +72,37 @@ How To Check If Given String Is A Valid JSON
 package main
 
 import (
-	"encoding/json"
-	"fmt"
+    "encoding/json"
+    "fmt"
 )
 
 func isJSONString(s string) bool {
-	var js string
-	return json.Unmarshal([]byte(s), &js) == nil
+    var js string
+    return json.Unmarshal([]byte(s), &js) == nil
 
 }
 
 func isJSON(s string) bool {
-	var js map[string]interface{}
-	return json.Unmarshal([]byte(s), &js) == nil
+    var js map[string]interface{}
+    return json.Unmarshal([]byte(s), &js) == nil
 
 }
 
 func main() {
-	var tests = []string{
-		`"Platypus"`,
-		`Platypus`,
-		`{"id1":"1"}`,
-		`{"id2":2}`,
-		`{"id3":[1,2,3]}`,
-		`[{"x1":"y1"}, {"x2":"y2"}]`,
-		`["x3", {"x33":"y33"}]`,
-	}
+    var tests = []string{
+        `"Platypus"`,
+        `Platypus`,
+        `{"id1":"1"}`,
+        `{"id2":2}`,
+        `{"id3":[1,2,3]}`,
+        `[{"x1":"y1"}, {"x2":"y2"}]`,
+        `["x3", {"x33":"y33"}]`,
+    }
 
-	for _, t := range tests {
-		fmt.Printf("isJSONString(%s) = %v\n", t, isJSONString(t))
-		fmt.Printf("isJSON(%s) = %v\n\n", t, isJSON(t))
-	}
+    for _, t := range tests {
+        fmt.Printf("isJSONString(%s) = %v\n", t, isJSONString(t))
+        fmt.Printf("isJSON(%s) = %v\n\n", t, isJSON(t))
+    }
 
 }
 ```
@@ -141,25 +141,25 @@ Program exited.
 package main
 
 import (
-	"fmt"
+    "fmt"
 )
 
 // contains checks if a string is present in
 // a slice
 func contains(s []string, str string) bool {
-	for _, v := range s {
-		if v == str {
-			return true
-		}
-	}
+    for _, v := range s {
+        if v == str {
+            return true
+        }
+    }
 
-	return false
+    return false
 }
 
 func main() {
-	s := []string{"James", "Wagner", "Christene", "Mike"}
-	fmt.Println(contains(s, "James"))
-	fmt.Println(contains(s, "Jack"))
+    s := []string{"James", "Wagner", "Christene", "Mike"}
+    fmt.Println(contains(s, "James"))
+    fmt.Println(contains(s, "Jack"))
 }
 ```
 
@@ -179,13 +179,13 @@ package main
 import "fmt"
 
 type User struct {
-	Name     string
-	Email    string
-	Notifier UserNotifier
+    Name     string
+    Email    string
+    Notifier UserNotifier
 }
 
 type UserNotifier interface {
-	SendMessage(user *User, message string) error
+    SendMessage(user *User, message string) error
 }
 
 type EmailNotifier struct {
@@ -195,25 +195,25 @@ type SmsNotifier struct {
 }
 
 func (user *User) notify(message string) error {
-	return user.Notifier.SendMessage(user, message)
+    return user.Notifier.SendMessage(user, message)
 }
 
 func (notifier SmsNotifier) SendMessage(user *User, message string) error {
-	_, err := fmt.Printf("Sending SMS to %s with content %s\n", user.Name, message)
-	return err
+    _, err := fmt.Printf("Sending SMS to %s with content %s\n", user.Name, message)
+    return err
 }
 
 func (notifier EmailNotifier) SendMessage(user *User, message string) error {
-	_, err := fmt.Printf("Sending email to %s with content %s\n", user.Name, message)
-	return err
+    _, err := fmt.Printf("Sending email to %s with content %s\n", user.Name, message)
+    return err
 }
 
 func main() {
-	user1 := User{"Dirk", "dirk@email.com", EmailNotifier{}}
-	user2 := User{"Justin", "bieber@email.com", SmsNotifier{}}
+    user1 := User{"Dirk", "dirk@email.com", EmailNotifier{}}
+    user2 := User{"Justin", "bieber@email.com", SmsNotifier{}}
 
-	user1.notify("Welcome Email user!")
-	user2.notify("Welcome SMS user!")
+    user1.notify("Welcome Email user!")
+    user2.notify("Welcome SMS user!")
 }
 ```
 
@@ -234,19 +234,19 @@ import "time"
 import "fmt"
 
 func elapsed(what string) func() {
-	start := time.Now()
-	return func() {
-		fmt.Printf("\n%s took %v\n", what, time.Since(start))
-	}
+    start := time.Now()
+    return func() {
+        fmt.Printf("\n%s took %v\n", what, time.Since(start))
+    }
 }
 
 func doSomething() {
-	defer elapsed("doSomething")()
-	time.Sleep(2 * time.Second)
+    defer elapsed("doSomething")()
+    time.Sleep(2 * time.Second)
 }
 
 func main() {
-	doSomething()
+    doSomething()
 }
 ```
 
@@ -266,12 +266,12 @@ import "log/syslog"
 import "log"
 
 func main() {
-	syslogger, err := syslog.New(syslog.LOG_DEBUG, "go_syslog")
-	if err != nil {
-		log.Fatalf("could not initialize go_syslog : %v", err.Error())
-	}
-	log.SetOutput(syslogger)
-	log.Printf("Log Entry")
+    syslogger, err := syslog.New(syslog.LOG_DEBUG, "go_syslog")
+    if err != nil {
+        log.Fatalf("could not initialize go_syslog : %v", err.Error())
+    }
+    log.SetOutput(syslogger)
+    log.Printf("Log Entry")
 }
 ```
 
@@ -343,27 +343,27 @@ fmt
 package main
 
 import (
-	"context"
-	"fmt"
-	"time"
+    "context"
+    "fmt"
+    "time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+    "go.mongodb.org/mongo-driver/bson"
+    "go.mongodb.org/mongo-driver/mongo"
+    "go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // This is a user defined method to close resources.
 // This method closes mongoDB connection and cancel context.
 func close(client *mongo.Client, ctx context.Context,
-	cancel context.CancelFunc) {
+    cancel context.CancelFunc) {
 
-	defer cancel()
+    defer cancel()
 
-	defer func() {
-		if err := client.Disconnect(ctx); err != nil {
-			panic(err)
-		}
-	}()
+    defer func() {
+        if err := client.Disconnect(ctx); err != nil {
+            panic(err)
+        }
+    }()
 }
 
 // This is a user defined method that returns mongo.Client,
@@ -374,9 +374,9 @@ func close(client *mongo.Client, ctx context.Context,
 // resource associated with it.
 func connect(uri string) (*mongo.Client, context.Context, context.CancelFunc, error) {
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
-	return client, ctx, cancel, err
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    client, err := mongo.Connect(ctx, options.Client().ApplyURI(uri))
+    return client, ctx, cancel, err
 }
 
 // insertOne is a user defined method, used to insert
@@ -384,14 +384,14 @@ func connect(uri string) (*mongo.Client, context.Context, context.CancelFunc, er
 // and error if any.
 func insertOne(client *mongo.Client, ctx context.Context, dataBase, col string, doc interface{}) (*mongo.InsertOneResult, error) {
 
-	// select database and collection ith Client.Database method
-	// and Database.Collection method
-	collection := client.Database(dataBase).Collection(col)
+    // select database and collection ith Client.Database method
+    // and Database.Collection method
+    collection := client.Database(dataBase).Collection(col)
 
-	// InsertOne accept two argument of type Context
-	// and of empty interface
-	result, err := collection.InsertOne(ctx, doc)
-	return result, err
+    // InsertOne accept two argument of type Context
+    // and of empty interface
+    result, err := collection.InsertOne(ctx, doc)
+    return result, err
 }
 
 // insertMany is a user defined method, used to insert
@@ -399,97 +399,97 @@ func insertOne(client *mongo.Client, ctx context.Context, dataBase, col string, 
 // InsertMany and error if any.
 func insertMany(client *mongo.Client, ctx context.Context, dataBase, col string, docs []interface{}) (*mongo.InsertManyResult, error) {
 
-	// select database and collection ith Client.Database
-	// method and Database.Collection method
-	collection := client.Database(dataBase).Collection(col)
+    // select database and collection ith Client.Database
+    // method and Database.Collection method
+    collection := client.Database(dataBase).Collection(col)
 
-	// InsertMany accept two argument of type Context
-	// and of empty interface
-	result, err := collection.InsertMany(ctx, docs)
-	return result, err
+    // InsertMany accept two argument of type Context
+    // and of empty interface
+    result, err := collection.InsertMany(ctx, docs)
+    return result, err
 }
 
 func main() {
 
-	// get Client, Context, CancelFunc and err from connect method.
-	client, ctx, cancel, err := connect("mongodb://localhost:27017")
-	if err != nil {
-		panic(err)
-	}
+    // get Client, Context, CancelFunc and err from connect method.
+    client, ctx, cancel, err := connect("mongodb://localhost:27017")
+    if err != nil {
+        panic(err)
+    }
 
-	// Release resource when main function is returned.
-	defer close(client, ctx, cancel)
+    // Release resource when main function is returned.
+    defer close(client, ctx, cancel)
 
-	// Create a object of type interface to store
-	// the bson values, that we are inserting into database.
-	var document interface{}
+    // Create a object of type interface to store
+    // the bson values, that we are inserting into database.
+    var document interface{}
 
-	document = bson.D{
-		{"rollNo", 175},
-		{"maths", 80},
-		{"science", 90},
-		{"computer", 95},
-	}
+    document = bson.D{
+        {"rollNo", 175},
+        {"maths", 80},
+        {"science", 90},
+        {"computer", 95},
+    }
 
-	// insertOne accepts client , context, database
-	// name collection name and an interface that
-	// will be inserted into the collection.
-	// insertOne returns an error and aresult of
-	// insertina single document into the collection.
-	insertOneResult, err := insertOne(client, ctx, "gfg",
-		"marks", document)
+    // insertOne accepts client , context, database
+    // name collection name and an interface that
+    // will be inserted into the collection.
+    // insertOne returns an error and aresult of
+    // insertina single document into the collection.
+    insertOneResult, err := insertOne(client, ctx, "gfg",
+        "marks", document)
 
-	// handle the error
-	if err != nil {
-		panic(err)
-	}
+    // handle the error
+    if err != nil {
+        panic(err)
+    }
 
-	// print the insertion id of the document,
-	// if it is inserted.
-	fmt.Println("Result of InsertOne")
-	fmt.Println(insertOneResult.InsertedID)
+    // print the insertion id of the document,
+    // if it is inserted.
+    fmt.Println("Result of InsertOne")
+    fmt.Println(insertOneResult.InsertedID)
 
-	// Now will be inserting multiple documents into
-	// the collection. create a object of type slice
-	// of interface to store multiple documents
-	var documents []interface{}
+    // Now will be inserting multiple documents into
+    // the collection. create a object of type slice
+    // of interface to store multiple documents
+    var documents []interface{}
 
-	// Storing into interface list.
-	documents = []interface{}{
-		bson.D{
-			{"rollNo", 153},
-			{"maths", 65},
-			{"science", 59},
-			{"computer", 55},
-		},
-		bson.D{
-			{"rollNo", 162},
-			{"maths", 86},
-			{"science", 80},
-			{"computer", 69},
-		},
-	}
+    // Storing into interface list.
+    documents = []interface{}{
+        bson.D{
+            {"rollNo", 153},
+            {"maths", 65},
+            {"science", 59},
+            {"computer", 55},
+        },
+        bson.D{
+            {"rollNo", 162},
+            {"maths", 86},
+            {"science", 80},
+            {"computer", 69},
+        },
+    }
 
-	// insertMany insert a list of documents into
-	// the collection. insertMany accepts client,
-	// context, database name collection name
-	// and slice of interface. returns error
-	// if any and result of multi document insertion.
-	insertManyResult, err := insertMany(client, ctx, "gfg",
-		"marks", documents)
+    // insertMany insert a list of documents into
+    // the collection. insertMany accepts client,
+    // context, database name collection name
+    // and slice of interface. returns error
+    // if any and result of multi document insertion.
+    insertManyResult, err := insertMany(client, ctx, "gfg",
+        "marks", documents)
 
-	// handle the error
-	if err != nil {
-		panic(err)
-	}
+    // handle the error
+    if err != nil {
+        panic(err)
+    }
 
-	fmt.Println("Result of InsertMany")
+    fmt.Println("Result of InsertMany")
 
-	// print the insertion ids of the multiple
-	// documents, if they are inserted.
-	for id := range insertManyResult.InsertedIDs {
-		fmt.Println(id)
-	}
+    // print the insertion ids of the multiple
+    // documents, if they are inserted.
+    for id := range insertManyResult.InsertedIDs {
+        fmt.Println(id)
+    }
 }
 ```
 
@@ -646,75 +646,75 @@ listens for these incoming packets.
 package main
 
 import (
-	"log"
-	"os"
-	"os/signal"
-	"time"
+    "log"
+    "os"
+    "os/signal"
+    "time"
 
-	"github.com/gorilla/websocket"
+    "github.com/gorilla/websocket"
 )
 
 var done chan interface{}
 var interrupt chan os.Signal
 
 func receiveHandler(connection *websocket.Conn) {
-	defer close(done)
-	for {
-		_, msg, err := connection.ReadMessage()
-		if err != nil {
-			log.Println("Error in receive:", err)
-			return
-		}
-		log.Printf("Received: %s\n", msg)
-	}
+    defer close(done)
+    for {
+        _, msg, err := connection.ReadMessage()
+        if err != nil {
+            log.Println("Error in receive:", err)
+            return
+        }
+        log.Printf("Received: %s\n", msg)
+    }
 }
 
 func main() {
-	done = make(chan interface{})    // Channel to indicate that the receiverHandler is done
-	interrupt = make(chan os.Signal) // Channel to listen for interrupt signal to terminate gracefully
+    done = make(chan interface{})    // Channel to indicate that the receiverHandler is done
+    interrupt = make(chan os.Signal) // Channel to listen for interrupt signal to terminate gracefully
 
-	signal.Notify(interrupt, os.Interrupt) // Notify the interrupt channel for SIGINT
+    signal.Notify(interrupt, os.Interrupt) // Notify the interrupt channel for SIGINT
 
-	socketUrl := "ws://localhost:8080" + "/socket"
-	conn, _, err := websocket.DefaultDialer.Dial(socketUrl, nil)
-	if err != nil {
-		log.Fatal("Error connecting to Websocket Server:", err)
-	}
-	defer conn.Close()
-	go receiveHandler(conn)
+    socketUrl := "ws://localhost:8080" + "/socket"
+    conn, _, err := websocket.DefaultDialer.Dial(socketUrl, nil)
+    if err != nil {
+        log.Fatal("Error connecting to Websocket Server:", err)
+    }
+    defer conn.Close()
+    go receiveHandler(conn)
 
-	// Our main loop for the client
-	// We send our relevant packets here
-	for {
-		select {
-		case <-time.After(time.Duration(1) * time.Millisecond * 1000):
-			// Send an echo packet every second
-			err := conn.WriteMessage(websocket.TextMessage, []byte("Hello from GolangDocs!"))
-			if err != nil {
-				log.Println("Error during writing to websocket:", err)
-				return
-			}
+    // Our main loop for the client
+    // We send our relevant packets here
+    for {
+        select {
+        case <-time.After(time.Duration(1) * time.Millisecond * 1000):
+            // Send an echo packet every second
+            err := conn.WriteMessage(websocket.TextMessage, []byte("Hello from GolangDocs!"))
+            if err != nil {
+                log.Println("Error during writing to websocket:", err)
+                return
+            }
 
-		case <-interrupt:
-			// We received a SIGINT (Ctrl + C). Terminate gracefully...
-			log.Println("Received SIGINT interrupt signal. Closing all pending connections")
+        case <-interrupt:
+            // We received a SIGINT (Ctrl + C). Terminate gracefully...
+            log.Println("Received SIGINT interrupt signal. Closing all pending connections")
 
-			// Close our websocket connection
-			err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-			if err != nil {
-				log.Println("Error during closing websocket:", err)
-				return
-			}
+            // Close our websocket connection
+            err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+            if err != nil {
+                log.Println("Error during closing websocket:", err)
+                return
+            }
 
-			select {
-			case <-done:
-				log.Println("Receiver Channel Closed! Exiting....")
-			case <-time.After(time.Duration(1) * time.Second):
-				log.Println("Timeout in closing receiving channel. Exiting....")
-			}
-			return
-		}
-	}
+            select {
+            case <-done:
+                log.Println("Receiver Channel Closed! Exiting....")
+            case <-time.After(time.Duration(1) * time.Second):
+                log.Println("Timeout in closing receiving channel. Exiting....")
+            }
+            return
+        }
+    }
 }
 ```
 
@@ -750,66 +750,66 @@ client and the server!
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
-	"os"
+    "encoding/json"
+    "fmt"
+    "io/ioutil"
+    "os"
 )
 
 func main() {
 
-	configFile := "config.json"
+    configFile := "config.json"
 
-	// Open our jsonFile
-	jsonFile, err := os.Open("config.json")
-	// if we os.Open returns an error then handle it
-	if err != nil {
-		fmt.Printf("\ncould not open json file : (%v) : %v", configFile, err.Error())
-		return
-	}
-	fmt.Printf("\nsuccessfully opened json file (%v)\n", configFile)
-	// defer the closing of our jsonFile so that we can parse it later on
-	defer jsonFile.Close()
+    // Open our jsonFile
+    jsonFile, err := os.Open("config.json")
+    // if we os.Open returns an error then handle it
+    if err != nil {
+        fmt.Printf("\ncould not open json file : (%v) : %v", configFile, err.Error())
+        return
+    }
+    fmt.Printf("\nsuccessfully opened json file (%v)\n", configFile)
+    // defer the closing of our jsonFile so that we can parse it later on
+    defer jsonFile.Close()
 
-	byteValue, _ := ioutil.ReadAll(jsonFile)
+    byteValue, _ := ioutil.ReadAll(jsonFile)
 
-	var result map[string]interface{}
+    var result map[string]interface{}
 
-	err = json.Unmarshal([]byte(byteValue), &result)
-	if err != nil {
-		fmt.Printf("\nerror : could not unmarshal json : %v", err.Error())
-		return
-	}
+    err = json.Unmarshal([]byte(byteValue), &result)
+    if err != nil {
+        fmt.Printf("\nerror : could not unmarshal json : %v", err.Error())
+        return
+    }
 
-	myValue, ok := result["my_key"].(string)
-	if ok {
-		fmt.Printf("\n[my_key] : (%v)\n", myValue)
-	}
+    myValue, ok := result["my_key"].(string)
+    if ok {
+        fmt.Printf("\n[my_key] : (%v)\n", myValue)
+    }
 
-	myFloat, ok := result["my_key_float"].(float64)
-	if ok {
-		fmt.Printf("\n[my_key_float] : (%v)\n", myFloat)
-	}
+    myFloat, ok := result["my_key_float"].(float64)
+    if ok {
+        fmt.Printf("\n[my_key_float] : (%v)\n", myFloat)
+    }
 
-	myList, ok := result["my_list"].([]interface{})
-	if ok {
-		fmt.Printf("\n[my_list] : (%v)\n", myList)
-	}
+    myList, ok := result["my_list"].([]interface{})
+    if ok {
+        fmt.Printf("\n[my_list] : (%v)\n", myList)
+    }
 
-	myNestedMap, ok := result["my_nested_data_key"].(map[string]interface{})
-	if ok {
-		fmt.Printf("\n[my_nested_data_key] : (%v)\n", myNestedMap)
-	}
+    myNestedMap, ok := result["my_nested_data_key"].(map[string]interface{})
+    if ok {
+        fmt.Printf("\n[my_nested_data_key] : (%v)\n", myNestedMap)
+    }
 
-	// -------------- pretty print the json data | start ----------------
+    // -------------- pretty print the json data | start ----------------
 
-	dataBytes, err := json.MarshalIndent(result, "", "    ")
-	if err != nil {
-		fmt.Printf("\nerror : could not MarshalIndent json : %v", err.Error())
-		return
-	}
-	fmt.Printf("\n\njson:\n\n%v\n", string(dataBytes))
-	// -------------- pretty print the json data | end ----------------
+    dataBytes, err := json.MarshalIndent(result, "", "    ")
+    if err != nil {
+        fmt.Printf("\nerror : could not MarshalIndent json : %v", err.Error())
+        return
+    }
+    fmt.Printf("\n\njson:\n\n%v\n", string(dataBytes))
+    // -------------- pretty print the json data | end ----------------
 }
 
 /*
@@ -1208,124 +1208,124 @@ func main() {
 package main
 
 import (
-	"log"
-	"math/rand"
-	"sync"
-	"time"
+    "log"
+    "math/rand"
+    "sync"
+    "time"
 )
 
 /*
 What does this program do ?
 
 1. create a function 'getRandomNumber'
-	> which generates a random number between max(=300) and min(=100)
+    > which generates a random number between max(=300) and min(=100)
 
 2. create 3 different goroutines
 
-	goroutine-1:
-		> in a for loop:
-			> get a random number using 'getRandomNumber'
-			> put the value into channel 'channelSend'
+    goroutine-1:
+        > in a for loop:
+            > get a random number using 'getRandomNumber'
+            > put the value into channel 'channelSend'
 
-	goroutine-2:
-		> in a for loop:
-			> read the value from channel 'channelSend' , and
-			> insert the value into another channel 'channelReceive'
+    goroutine-2:
+        > in a for loop:
+            > read the value from channel 'channelSend' , and
+            > insert the value into another channel 'channelReceive'
 
-	goroutine-3:
-		> in a for loop
-			> read the value from channel 'channelReceive'
-			> log the value on stdout.
+    goroutine-3:
+        > in a for loop
+            > read the value from channel 'channelReceive'
+            > log the value on stdout.
 
 3. after MaxTimeSeconds(=10 secs) have been lapsed
-	> gracefully close all the channels
-	> then exit.
+    > gracefully close all the channels
+    > then exit.
 */
 
 var (
-	MaxTimeSeconds float64 = 10
+    MaxTimeSeconds float64 = 10
 )
 
 func getRandomNumber() int {
-	max := 300
-	min := 100
-	rand.Seed(time.Now().UnixNano())
-	return rand.Intn(max-min) + min
+    max := 300
+    min := 100
+    rand.Seed(time.Now().UnixNano())
+    return rand.Intn(max-min) + min
 }
 
 func generateRandomAndPush(wg *sync.WaitGroup, myChannel chan int) {
-	defer wg.Done()
-	start := time.Now()
-	for {
-		myChannel <- getRandomNumber()
-		time.Sleep(2 * time.Second)
-		duration := time.Since(start)
-		totalTimeElapsed := duration.Seconds()
-		log.Printf("> total time elapsed : %v", totalTimeElapsed)
-		if totalTimeElapsed > MaxTimeSeconds {
-			close(myChannel)
-			log.Printf("@ channelSend is closed.")
-			return
-		}
-	}
+    defer wg.Done()
+    start := time.Now()
+    for {
+        myChannel <- getRandomNumber()
+        time.Sleep(2 * time.Second)
+        duration := time.Since(start)
+        totalTimeElapsed := duration.Seconds()
+        log.Printf("> total time elapsed : %v", totalTimeElapsed)
+        if totalTimeElapsed > MaxTimeSeconds {
+            close(myChannel)
+            log.Printf("@ channelSend is closed.")
+            return
+        }
+    }
 }
 
 func getFromChannelAndPush(wg *sync.WaitGroup, getChannel chan int, pushChannel chan int) {
-	defer wg.Done()
-	for {
-		receivedData, ok := <-getChannel
-		if !ok {
-			log.Printf("@ not more data from <-getChannel !")
-			close(pushChannel)
-			log.Printf("@ pushChannel is closed.")
-			return
-		} else {
-			pushChannel <- receivedData
-		}
-	}
+    defer wg.Done()
+    for {
+        receivedData, ok := <-getChannel
+        if !ok {
+            log.Printf("@ not more data from <-getChannel !")
+            close(pushChannel)
+            log.Printf("@ pushChannel is closed.")
+            return
+        } else {
+            pushChannel <- receivedData
+        }
+    }
 }
 
 func receiveData(wg *sync.WaitGroup, receiveFromChannel chan int, done chan bool) {
-	defer func() {
-		wg.Done()
-		done <- true
-	}()
-	for {
-		receivedData, ok := <-receiveFromChannel
-		if !ok {
-			log.Printf("@ no data from <-receiveFromChannel !")
-			return
-		}
-		log.Printf("> receivedData : %v", receivedData)
-	}
+    defer func() {
+        wg.Done()
+        done <- true
+    }()
+    for {
+        receivedData, ok := <-receiveFromChannel
+        if !ok {
+            log.Printf("@ no data from <-receiveFromChannel !")
+            return
+        }
+        log.Printf("> receivedData : %v", receivedData)
+    }
 }
 
 func main() {
-	channelSend := make(chan int)
-	channelReceive := make(chan int)
+    channelSend := make(chan int)
+    channelReceive := make(chan int)
 
-	done := make(chan bool)
+    done := make(chan bool)
 
-	var wg sync.WaitGroup
+    var wg sync.WaitGroup
 
-	wg.Add(1)
-	go generateRandomAndPush(&wg, channelSend)
+    wg.Add(1)
+    go generateRandomAndPush(&wg, channelSend)
 
-	wg.Add(1)
-	go getFromChannelAndPush(&wg, channelSend, channelReceive)
+    wg.Add(1)
+    go getFromChannelAndPush(&wg, channelSend, channelReceive)
 
-	wg.Add(1)
-	go receiveData(&wg, channelReceive, done)
+    wg.Add(1)
+    go receiveData(&wg, channelReceive, done)
 
-	log.Printf("waiting...")
+    log.Printf("waiting...")
 
-	wg.Wait()
+    wg.Wait()
 
-	log.Printf("done waiting !")
+    log.Printf("done waiting !")
 
-	<-done
+    <-done
 
-	log.Printf("done <- true")
+    log.Printf("done <- true")
 }
 
 /*

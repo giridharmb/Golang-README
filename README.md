@@ -1,5 +1,7 @@
 ### Golang Snippets
 
+[Convert JSON To String And String To JSON](#convert-json-to-string-and-string-to-json)
+
 [Check Data Type](#Check-Data-Type)
 
 [Check If String Is JSON](#Check-If-String-Is-JSON)
@@ -27,6 +29,78 @@
 [Read And Write To Channel](#read-and-write-to-channel)
 
 <hr/>
+
+#### [Convert JSON To String And String To JSON](#convert-json-to-string-and-string-to-json)
+
+```golang
+
+// main.go
+
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+func main() {
+
+	// ---(1)--- Convert JSON (Map) to String -----------
+
+	//-----------  simple JSON -----------
+
+	map1 := map[string]string{
+		"a": "apple",
+		"b": "banana",
+	}
+	jsonStr, err := json.Marshal(map1)
+	if err != nil {
+		fmt.Printf("Error: %s", err.Error())
+	} else {
+		fmt.Println(string(jsonStr))
+	}
+
+	//-----------  nested JSON -----------
+
+	var x = map[string]map[string]string{}
+
+	x["fruits"] = map[string]string{}
+	x["colors"] = map[string]string{}
+
+	x["fruits"]["a"] = "apple"
+	x["fruits"]["b"] = "banana"
+
+	x["colors"]["r"] = "red"
+	x["colors"]["b"] = "blue"
+
+	jsonStr, err = json.Marshal(x)
+	if err != nil {
+		fmt.Printf("\nERROR: could not marshal json map : %v", err.Error())
+	} else {
+		fmt.Println(string(jsonStr))
+	}
+
+	// ---(2)--- Convert String to JSON (Map) -----------
+
+	var jsonMap map[string]interface{}
+	jsonString := fmt.Sprintf(`{"x": "123", "y": 10.44, "z": [1,2,3,4], "xyz" : {"x1":11, "x2": [1,2,3,4,5,6]}}`)
+	err = json.Unmarshal([]byte(jsonString), &jsonMap)
+	if err != nil {
+		fmt.Printf("\nERROR : could not unmarshal json string : %v", err.Error())
+		return
+	}
+	fmt.Println(jsonMap)
+
+}
+```
+
+Output `go run main.go`
+
+```
+{"a":"apple","b":"banana"}
+{"colors":{"b":"blue","r":"red"},"fruits":{"a":"apple","b":"banana"}}
+map[x:123 xyz:map[x1:11 x2:[1 2 3 4 5 6]] y:10.44 z:[1 2 3 4]]
+```
 
 #### [Check Data Type](#Check-Data-Type)
 

@@ -39,57 +39,57 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
+    "encoding/json"
+    "fmt"
 )
 
 func main() {
 
-	// ---(1)--- Convert JSON (Map) to String -----------
+    // ---(1)--- Convert JSON (Map) to String -----------
 
-	//-----------  simple JSON -----------
+    //-----------  simple JSON -----------
 
-	map1 := map[string]string{
-		"a": "apple",
-		"b": "banana",
-	}
-	jsonStr, err := json.Marshal(map1)
-	if err != nil {
-		fmt.Printf("Error: %s", err.Error())
-	} else {
-		fmt.Println(string(jsonStr))
-	}
+    map1 := map[string]string{
+        "a": "apple",
+        "b": "banana",
+    }
+    jsonStr, err := json.Marshal(map1)
+    if err != nil {
+        fmt.Printf("Error: %s", err.Error())
+    } else {
+        fmt.Println(string(jsonStr))
+    }
 
-	//-----------  nested JSON -----------
+    //-----------  nested JSON -----------
 
-	var x = map[string]map[string]string{}
+    var x = map[string]map[string]string{}
 
-	x["fruits"] = map[string]string{}
-	x["colors"] = map[string]string{}
+    x["fruits"] = map[string]string{}
+    x["colors"] = map[string]string{}
 
-	x["fruits"]["a"] = "apple"
-	x["fruits"]["b"] = "banana"
+    x["fruits"]["a"] = "apple"
+    x["fruits"]["b"] = "banana"
 
-	x["colors"]["r"] = "red"
-	x["colors"]["b"] = "blue"
+    x["colors"]["r"] = "red"
+    x["colors"]["b"] = "blue"
 
-	jsonStr, err = json.Marshal(x)
-	if err != nil {
-		fmt.Printf("\nERROR: could not marshal json map : %v", err.Error())
-	} else {
-		fmt.Println(string(jsonStr))
-	}
+    jsonStr, err = json.Marshal(x)
+    if err != nil {
+        fmt.Printf("\nERROR: could not marshal json map : %v", err.Error())
+    } else {
+        fmt.Println(string(jsonStr))
+    }
 
-	// ---(2)--- Convert String to JSON (Map) -----------
+    // ---(2)--- Convert String to JSON (Map) -----------
 
-	var jsonMap map[string]interface{}
-	jsonString := fmt.Sprintf(`{"x": "123", "y": 10.44, "z": [1,2,3,4], "xyz" : {"x1":11, "x2": [1,2,3,4,5,6]}}`)
-	err = json.Unmarshal([]byte(jsonString), &jsonMap)
-	if err != nil {
-		fmt.Printf("\nERROR : could not unmarshal json string : %v", err.Error())
-		return
-	}
-	fmt.Println(jsonMap)
+    var jsonMap map[string]interface{}
+    jsonString := fmt.Sprintf(`{"x": "123", "y": 10.44, "z": [1,2,3,4], "xyz" : {"x1":11, "x2": [1,2,3,4,5,6]}}`)
+    err = json.Unmarshal([]byte(jsonString), &jsonMap)
+    if err != nil {
+        fmt.Printf("\nERROR : could not unmarshal json string : %v", err.Error())
+        return
+    }
+    fmt.Println(jsonMap)
 
 }
 ```

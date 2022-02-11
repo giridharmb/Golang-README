@@ -1433,12 +1433,12 @@ Program exited.
 
 #### [RabbitMQ Producer And Consumer](#rabbitmq-producer-and-consumer)
 
-> FYI : Run Both Producer And Consumer At The Same Time
-> Producer -> Will Publish Messages
-> Consumer -> Will Consume Messages
-> Producer Will Exit Atfer 20 Seconds
+- FYI : Run Both Producer And Consumer Programs At The Same Time
+- Producer -> Will Publish Messages
+- Consumer -> Will Consume Messages
+- Producer Will Exit Atfer 20 Seconds
 
-*Producer*
+*Producer* (`main.go`)
 
 ```golang
 package main
@@ -1627,7 +1627,7 @@ INFO[0023] Done sending : __done__ to consumer.
 */
 ```
 
-*Consumer*
+*Consumer* (`main.go`)
 
 ```golang
 package main

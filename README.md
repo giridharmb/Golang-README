@@ -1444,149 +1444,149 @@ Program exited.
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"time"
+    "encoding/json"
+    "fmt"
+    "os"
+    "time"
 
-	log "github.com/sirupsen/logrus"
-	amqp "github.com/streadway/amqp"
+    log "github.com/sirupsen/logrus"
+    amqp "github.com/streadway/amqp"
 )
 
 func failOnError(err error, msg string) bool {
-	if err != nil {
-		log.Errorf("%v : %v", msg, err.Error())
-		return true
-	}
-	return false
+    if err != nil {
+        log.Errorf("%v : %v", msg, err.Error())
+        return true
+    }
+    return false
 }
 
 var (
-	// environment variables : 'MQUSER' , 'MQPASS', 'MQHOST'
-	// please set them !
+    // environment variables : 'MQUSER' , 'MQPASS', 'MQHOST'
+    // please set them !
 
-	MQUSER string = "" // MQ Username
-	MQPASS string = "" // MQ Password
-	MQHOST string = "" // MQ Hostname , Ex: my-mq-server.company.com
+    MQUSER string = "" // MQ Username
+    MQPASS string = "" // MQ Password
+    MQHOST string = "" // MQ Hostname , Ex: my-mq-server.company.com
 )
 
 func initApp() bool {
 
-	// check if ENV Variables are set.
+    // check if ENV Variables are set.
 
-	MQUSER = os.Getenv("MQUSER")
-	if MQUSER == "" {
-		log.Error("please set 'MQUSER' environment variable !")
-		return false
-	}
+    MQUSER = os.Getenv("MQUSER")
+    if MQUSER == "" {
+        log.Error("please set 'MQUSER' environment variable !")
+        return false
+    }
 
-	MQPASS = os.Getenv("MQPASS")
-	if MQPASS == "" {
-		log.Error("please set 'MQPASS' environment variable !")
-		return false
-	}
+    MQPASS = os.Getenv("MQPASS")
+    if MQPASS == "" {
+        log.Error("please set 'MQPASS' environment variable !")
+        return false
+    }
 
-	MQHOST = os.Getenv("MQHOST")
-	if MQHOST == "" {
-		log.Error("please set 'MQHOST' environment variable !")
-		return false
-	}
-	return true
+    MQHOST = os.Getenv("MQHOST")
+    if MQHOST == "" {
+        log.Error("please set 'MQHOST' environment variable !")
+        return false
+    }
+    return true
 }
 
 func publishMessage(queueName string, exchange string, data interface{}) {
 
-	connectionString := fmt.Sprintf("amqp://%v:%v@%v:5672", MQUSER, MQPASS, MQHOST)
-	// log.Printf("connectionString %v", connectionString)
-	conn, err := amqp.Dial(connectionString)
-	if failOnError(err, "Failed to connect to RabbitMQ") {
-		return
-	}
-	defer conn.Close()
+    connectionString := fmt.Sprintf("amqp://%v:%v@%v:5672", MQUSER, MQPASS, MQHOST)
+    // log.Printf("connectionString %v", connectionString)
+    conn, err := amqp.Dial(connectionString)
+    if failOnError(err, "Failed to connect to RabbitMQ") {
+        return
+    }
+    defer conn.Close()
 
-	ch, err := conn.Channel()
-	if failOnError(err, "Failed to open a channel") {
-		return
-	}
+    ch, err := conn.Channel()
+    if failOnError(err, "Failed to open a channel") {
+        return
+    }
 
-	defer ch.Close()
+    defer ch.Close()
 
-	q, err := ch.QueueDeclare(
-		queueName, // name
-		false,     // durable
-		false,     // delete when unused
-		false,     // exclusive
-		false,     // no-wait
-		nil,       // arguments
-	)
-	if failOnError(err, "Failed to declare a queue") {
-		return
-	}
+    q, err := ch.QueueDeclare(
+        queueName, // name
+        false,     // durable
+        false,     // delete when unused
+        false,     // exclusive
+        false,     // no-wait
+        nil,       // arguments
+    )
+    if failOnError(err, "Failed to declare a queue") {
+        return
+    }
 
-	body := ""
+    body := ""
 
-	jsonStr, err := json.Marshal(data)
-	if err != nil {
-		log.Errorf("could not marshal json data : %v", err.Error())
-	} else {
-		body = string(jsonStr)
-		log.Printf("body : (%v)", body)
-	}
-	err = ch.Publish(
-		exchange, // exchange
-		q.Name,   // routing key
-		false,    // mandatory
-		false,    // immediate
-		amqp.Publishing{
-			ContentType: "text/plain",
-			Body:        []byte(body),
-		})
-	if failOnError(err, "Failed to publish a message") {
-		return
-	}
+    jsonStr, err := json.Marshal(data)
+    if err != nil {
+        log.Errorf("could not marshal json data : %v", err.Error())
+    } else {
+        body = string(jsonStr)
+        log.Printf("body : (%v)", body)
+    }
+    err = ch.Publish(
+        exchange, // exchange
+        q.Name,   // routing key
+        false,    // mandatory
+        false,    // immediate
+        amqp.Publishing{
+            ContentType: "text/plain",
+            Body:        []byte(body),
+        })
+    if failOnError(err, "Failed to publish a message") {
+        return
+    }
 
-	log.Printf(" [x] Sent %s\n", body)
+    log.Printf(" [x] Sent %s\n", body)
 }
 
 func main() {
 
-	successfullyInitialized := initApp()
-	if !successfullyInitialized {
-		return
-	}
+    successfullyInitialized := initApp()
+    if !successfullyInitialized {
+        return
+    }
 
-	done := make(chan bool)
+    done := make(chan bool)
 
-	data1 := "hello_world"
-	data2 := make(map[string]interface{})
-	data2["x"] = []int{1, 2, 3, 4, 5}
-	data2["y"] = "data"
-	data3 := true
+    data1 := "hello_world"
+    data2 := make(map[string]interface{})
+    data2["x"] = []int{1, 2, 3, 4, 5}
+    data2["y"] = "data"
+    data3 := true
 
-	data4 := "__done__"
+    data4 := "__done__"
 
-	go func() {
-		start := time.Now()
-		for {
-			time.Sleep(500 * time.Millisecond)
-			publishMessage("test-queue", "", data1)
-			publishMessage("test-queue", "", data2)
-			publishMessage("test-queue", "", data3)
-			duration := time.Since(start)
-			totalTimeElapsed := duration.Seconds()
-			log.Printf("totalTimeElapsed : %v", totalTimeElapsed)
-			if totalTimeElapsed > 20 {
-				publishMessage("test-queue", "", data4)
-				done <- true
-			}
-		}
-	}()
+    go func() {
+        start := time.Now()
+        for {
+            time.Sleep(500 * time.Millisecond)
+            publishMessage("test-queue", "", data1)
+            publishMessage("test-queue", "", data2)
+            publishMessage("test-queue", "", data3)
+            duration := time.Since(start)
+            totalTimeElapsed := duration.Seconds()
+            log.Printf("totalTimeElapsed : %v", totalTimeElapsed)
+            if totalTimeElapsed > 20 {
+                publishMessage("test-queue", "", data4)
+                done <- true
+            }
+        }
+    }()
 
-	log.Printf("waiting for done <- true")
+    log.Printf("waiting for done <- true")
 
-	<-done
+    <-done
 
-	log.Printf("Done sending : __done__ to consumer.")
+    log.Printf("Done sending : __done__ to consumer.")
 }
 
 /*
@@ -1633,134 +1633,134 @@ INFO[0023] Done sending : __done__ to consumer.
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
+    "encoding/json"
+    "fmt"
+    "os"
 
-	log "github.com/sirupsen/logrus"
-	amqp "github.com/streadway/amqp"
+    log "github.com/sirupsen/logrus"
+    amqp "github.com/streadway/amqp"
 )
 
 func failOnError(err error, msg string) bool {
-	if err != nil {
-		log.Errorf("%v : %v", msg, err.Error())
-		return true
-	}
-	return false
+    if err != nil {
+        log.Errorf("%v : %v", msg, err.Error())
+        return true
+    }
+    return false
 }
 
 var (
-	// environment variables : 'MQUSER' , 'MQPASS', 'MQHOST'
-	// please set them !
+    // environment variables : 'MQUSER' , 'MQPASS', 'MQHOST'
+    // please set them !
 
-	MQUSER string = "" // MQ Username
-	MQPASS string = "" // MQ Password
-	MQHOST string = "" // MQ Hostname , Ex: my-mq-server.company.com
+    MQUSER string = "" // MQ Username
+    MQPASS string = "" // MQ Password
+    MQHOST string = "" // MQ Hostname , Ex: my-mq-server.company.com
 )
 
 func initApp() bool {
 
-	// check if ENV Variables are set.
+    // check if ENV Variables are set.
 
-	MQUSER = os.Getenv("MQUSER")
-	if MQUSER == "" {
-		log.Error("please set 'MQUSER' environment variable !")
-		return false
-	}
+    MQUSER = os.Getenv("MQUSER")
+    if MQUSER == "" {
+        log.Error("please set 'MQUSER' environment variable !")
+        return false
+    }
 
-	MQPASS = os.Getenv("MQPASS")
-	if MQPASS == "" {
-		log.Error("please set 'MQPASS' environment variable !")
-		return false
-	}
+    MQPASS = os.Getenv("MQPASS")
+    if MQPASS == "" {
+        log.Error("please set 'MQPASS' environment variable !")
+        return false
+    }
 
-	MQHOST = os.Getenv("MQHOST")
-	if MQHOST == "" {
-		log.Error("please set 'MQHOST' environment variable !")
-		return false
-	}
-	return true
+    MQHOST = os.Getenv("MQHOST")
+    if MQHOST == "" {
+        log.Error("please set 'MQHOST' environment variable !")
+        return false
+    }
+    return true
 }
 
 func consumeMessage(queueName string, exchange string) {
 
-	doneMessage := "__done__"
-	connectionString := fmt.Sprintf("amqp://%v:%v@%v:5672", MQUSER, MQPASS, MQHOST)
-	// log.Printf("connectionString %v", connectionString)
-	conn, err := amqp.Dial(connectionString)
-	if failOnError(err, "Failed to connect to RabbitMQ") {
-		return
-	}
-	defer conn.Close()
+    doneMessage := "__done__"
+    connectionString := fmt.Sprintf("amqp://%v:%v@%v:5672", MQUSER, MQPASS, MQHOST)
+    // log.Printf("connectionString %v", connectionString)
+    conn, err := amqp.Dial(connectionString)
+    if failOnError(err, "Failed to connect to RabbitMQ") {
+        return
+    }
+    defer conn.Close()
 
-	ch, err := conn.Channel()
-	if failOnError(err, "Failed to open a channel") {
-		return
-	}
+    ch, err := conn.Channel()
+    if failOnError(err, "Failed to open a channel") {
+        return
+    }
 
-	defer ch.Close()
+    defer ch.Close()
 
-	q, err := ch.QueueDeclare(
-		queueName, // name
-		false,     // durable
-		false,     // delete when unused
-		false,     // exclusive
-		false,     // no-wait
-		nil,       // arguments
-	)
-	if failOnError(err, "Failed to declare a queue") {
-		return
-	}
+    q, err := ch.QueueDeclare(
+        queueName, // name
+        false,     // durable
+        false,     // delete when unused
+        false,     // exclusive
+        false,     // no-wait
+        nil,       // arguments
+    )
+    if failOnError(err, "Failed to declare a queue") {
+        return
+    }
 
-	msgs, err := ch.Consume(
-		q.Name, // queue
-		"",     // consumer
-		true,   // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
-	)
-	if failOnError(err, "Failed to register a consumer") {
-		return
-	}
+    msgs, err := ch.Consume(
+        q.Name, // queue
+        "",     // consumer
+        true,   // auto-ack
+        false,  // exclusive
+        false,  // no-local
+        false,  // no-wait
+        nil,    // args
+    )
+    if failOnError(err, "Failed to register a consumer") {
+        return
+    }
 
-	forever := make(chan bool)
+    forever := make(chan bool)
 
-	var jsonMap interface{}
+    var jsonMap interface{}
 
-	go func() {
-		for d := range msgs {
-			err = json.Unmarshal([]byte(d.Body), &jsonMap)
-			if err != nil {
-				log.Errorf("Could not unmarshal json data : %v", err.Error())
-			}
-			log.Printf("Received Message : %v", jsonMap)
-			// log.Printf("Received a message: %s", d.Body)
-			doneMsg, ok := jsonMap.(string)
-			if ok {
-				if doneMsg == doneMessage {
-					log.Printf("Received Final : %v", doneMessage)
-					log.Printf("Will stop listening for further messages getting published...")
-					forever <- true
-				}
-			}
-		}
-	}()
+    go func() {
+        for d := range msgs {
+            err = json.Unmarshal([]byte(d.Body), &jsonMap)
+            if err != nil {
+                log.Errorf("Could not unmarshal json data : %v", err.Error())
+            }
+            log.Printf("Received Message : %v", jsonMap)
+            // log.Printf("Received a message: %s", d.Body)
+            doneMsg, ok := jsonMap.(string)
+            if ok {
+                if doneMsg == doneMessage {
+                    log.Printf("Received Final : %v", doneMessage)
+                    log.Printf("Will stop listening for further messages getting published...")
+                    forever <- true
+                }
+            }
+        }
+    }()
 
-	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
-	<-forever
-	log.Printf("Done with the consumer.")
+    log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
+    <-forever
+    log.Printf("Done with the consumer.")
 }
 
 func main() {
 
-	successfullyInitialized := initApp()
-	if !successfullyInitialized {
-		return
-	}
+    successfullyInitialized := initApp()
+    if !successfullyInitialized {
+        return
+    }
 
-	consumeMessage("test-queue", "")
+    consumeMessage("test-queue", "")
 
 }
 

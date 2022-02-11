@@ -28,6 +28,8 @@
 
 [Read And Write To Channel](#read-and-write-to-channel)
 
+[RabbitMQ Producer And Consumer](#rabbitmq-producer-and-consumer)
+
 <hr/>
 
 #### [Convert JSON To String And String To JSON](#convert-json-to-string-and-string-to-json)
@@ -1426,5 +1428,361 @@ Sample Rnn:
 2009/11/10 23:00:12 done <- true
 
 Program exited.
+*/
+```
+
+#### [RabbitMQ Producer And Consumer](#rabbitmq-producer-and-consumer)
+
+> FYI : Run Both Producer And Consumer At The Same Time
+> Producer -> Will Publish Messages
+> Consumer -> Will Consume Messages
+> Producer Will Exit Atfer 20 Seconds
+
+*Producer*
+
+```golang
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+
+	log "github.com/sirupsen/logrus"
+	amqp "github.com/streadway/amqp"
+)
+
+func failOnError(err error, msg string) bool {
+	if err != nil {
+		log.Errorf("%v : %v", msg, err.Error())
+		return true
+	}
+	return false
+}
+
+var (
+	// environment variables : 'MQUSER' , 'MQPASS', 'MQHOST'
+	// please set them !
+
+	MQUSER string = "" // MQ Username
+	MQPASS string = "" // MQ Password
+	MQHOST string = "" // MQ Hostname , Ex: my-mq-server.company.com
+)
+
+func initApp() bool {
+
+	// check if ENV Variables are set.
+
+	MQUSER = os.Getenv("MQUSER")
+	if MQUSER == "" {
+		log.Error("please set 'MQUSER' environment variable !")
+		return false
+	}
+
+	MQPASS = os.Getenv("MQPASS")
+	if MQPASS == "" {
+		log.Error("please set 'MQPASS' environment variable !")
+		return false
+	}
+
+	MQHOST = os.Getenv("MQHOST")
+	if MQHOST == "" {
+		log.Error("please set 'MQHOST' environment variable !")
+		return false
+	}
+	return true
+}
+
+func publishMessage(queueName string, exchange string, data interface{}) {
+
+	connectionString := fmt.Sprintf("amqp://%v:%v@%v:5672", MQUSER, MQPASS, MQHOST)
+	// log.Printf("connectionString %v", connectionString)
+	conn, err := amqp.Dial(connectionString)
+	if failOnError(err, "Failed to connect to RabbitMQ") {
+		return
+	}
+	defer conn.Close()
+
+	ch, err := conn.Channel()
+	if failOnError(err, "Failed to open a channel") {
+		return
+	}
+
+	defer ch.Close()
+
+	q, err := ch.QueueDeclare(
+		queueName, // name
+		false,     // durable
+		false,     // delete when unused
+		false,     // exclusive
+		false,     // no-wait
+		nil,       // arguments
+	)
+	if failOnError(err, "Failed to declare a queue") {
+		return
+	}
+
+	body := ""
+
+	jsonStr, err := json.Marshal(data)
+	if err != nil {
+		log.Errorf("could not marshal json data : %v", err.Error())
+	} else {
+		body = string(jsonStr)
+		log.Printf("body : (%v)", body)
+	}
+	err = ch.Publish(
+		exchange, // exchange
+		q.Name,   // routing key
+		false,    // mandatory
+		false,    // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        []byte(body),
+		})
+	if failOnError(err, "Failed to publish a message") {
+		return
+	}
+
+	log.Printf(" [x] Sent %s\n", body)
+}
+
+func main() {
+
+	successfullyInitialized := initApp()
+	if !successfullyInitialized {
+		return
+	}
+
+	done := make(chan bool)
+
+	data1 := "hello_world"
+	data2 := make(map[string]interface{})
+	data2["x"] = []int{1, 2, 3, 4, 5}
+	data2["y"] = "data"
+	data3 := true
+
+	data4 := "__done__"
+
+	go func() {
+		start := time.Now()
+		for {
+			time.Sleep(500 * time.Millisecond)
+			publishMessage("test-queue", "", data1)
+			publishMessage("test-queue", "", data2)
+			publishMessage("test-queue", "", data3)
+			duration := time.Since(start)
+			totalTimeElapsed := duration.Seconds()
+			log.Printf("totalTimeElapsed : %v", totalTimeElapsed)
+			if totalTimeElapsed > 20 {
+				publishMessage("test-queue", "", data4)
+				done <- true
+			}
+		}
+	}()
+
+	log.Printf("waiting for done <- true")
+
+	<-done
+
+	log.Printf("Done sending : __done__ to consumer.")
+}
+
+/*
+Producer Output:
+
+INFO[0000] waiting for done <- true
+INFO[0001] body : ("hello_world")
+INFO[0001]  [x] Sent "hello_world"
+INFO[0003] body : ({"x":[1,2,3,4,5],"y":"data"})
+INFO[0003]  [x] Sent {"x":[1,2,3,4,5],"y":"data"}
+INFO[0005] body : (true)
+INFO[0005]  [x] Sent true
+INFO[0005] totalTimeElapsed : 5.578337558
+INFO[0007] body : ("hello_world")
+INFO[0007]  [x] Sent "hello_world"
+INFO[0008] body : ({"x":[1,2,3,4,5],"y":"data"})
+INFO[0008]  [x] Sent {"x":[1,2,3,4,5],"y":"data"}
+INFO[0010] body : (true)
+INFO[0010]  [x] Sent true
+INFO[0010] totalTimeElapsed : 10.917071813
+INFO[0012] body : ("hello_world")
+INFO[0012]  [x] Sent "hello_world"
+INFO[0014] body : ({"x":[1,2,3,4,5],"y":"data"})
+INFO[0014]  [x] Sent {"x":[1,2,3,4,5],"y":"data"}
+INFO[0015] body : (true)
+INFO[0015]  [x] Sent true
+INFO[0016] totalTimeElapsed : 16.243441629
+INFO[0017] body : ("hello_world")
+INFO[0017]  [x] Sent "hello_world"
+INFO[0019] body : ({"x":[1,2,3,4,5],"y":"data"})
+INFO[0019]  [x] Sent {"x":[1,2,3,4,5],"y":"data"}
+INFO[0021] body : (true)
+INFO[0021]  [x] Sent true
+INFO[0021] totalTimeElapsed : 21.572205004
+INFO[0022] body : ("__done__")
+INFO[0022]  [x] Sent "__done__"
+INFO[0023] Done sending : __done__ to consumer.
+*/
+```
+
+*Consumer*
+
+```golang
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+
+	log "github.com/sirupsen/logrus"
+	amqp "github.com/streadway/amqp"
+)
+
+func failOnError(err error, msg string) bool {
+	if err != nil {
+		log.Errorf("%v : %v", msg, err.Error())
+		return true
+	}
+	return false
+}
+
+var (
+	// environment variables : 'MQUSER' , 'MQPASS', 'MQHOST'
+	// please set them !
+
+	MQUSER string = "" // MQ Username
+	MQPASS string = "" // MQ Password
+	MQHOST string = "" // MQ Hostname , Ex: my-mq-server.company.com
+)
+
+func initApp() bool {
+
+	// check if ENV Variables are set.
+
+	MQUSER = os.Getenv("MQUSER")
+	if MQUSER == "" {
+		log.Error("please set 'MQUSER' environment variable !")
+		return false
+	}
+
+	MQPASS = os.Getenv("MQPASS")
+	if MQPASS == "" {
+		log.Error("please set 'MQPASS' environment variable !")
+		return false
+	}
+
+	MQHOST = os.Getenv("MQHOST")
+	if MQHOST == "" {
+		log.Error("please set 'MQHOST' environment variable !")
+		return false
+	}
+	return true
+}
+
+func consumeMessage(queueName string, exchange string) {
+
+	doneMessage := "__done__"
+	connectionString := fmt.Sprintf("amqp://%v:%v@%v:5672", MQUSER, MQPASS, MQHOST)
+	// log.Printf("connectionString %v", connectionString)
+	conn, err := amqp.Dial(connectionString)
+	if failOnError(err, "Failed to connect to RabbitMQ") {
+		return
+	}
+	defer conn.Close()
+
+	ch, err := conn.Channel()
+	if failOnError(err, "Failed to open a channel") {
+		return
+	}
+
+	defer ch.Close()
+
+	q, err := ch.QueueDeclare(
+		queueName, // name
+		false,     // durable
+		false,     // delete when unused
+		false,     // exclusive
+		false,     // no-wait
+		nil,       // arguments
+	)
+	if failOnError(err, "Failed to declare a queue") {
+		return
+	}
+
+	msgs, err := ch.Consume(
+		q.Name, // queue
+		"",     // consumer
+		true,   // auto-ack
+		false,  // exclusive
+		false,  // no-local
+		false,  // no-wait
+		nil,    // args
+	)
+	if failOnError(err, "Failed to register a consumer") {
+		return
+	}
+
+	forever := make(chan bool)
+
+	var jsonMap interface{}
+
+	go func() {
+		for d := range msgs {
+			err = json.Unmarshal([]byte(d.Body), &jsonMap)
+			if err != nil {
+				log.Errorf("Could not unmarshal json data : %v", err.Error())
+			}
+			log.Printf("Received Message : %v", jsonMap)
+			// log.Printf("Received a message: %s", d.Body)
+			doneMsg, ok := jsonMap.(string)
+			if ok {
+				if doneMsg == doneMessage {
+					log.Printf("Received Final : %v", doneMessage)
+					log.Printf("Will stop listening for further messages getting published...")
+					forever <- true
+				}
+			}
+		}
+	}()
+
+	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
+	<-forever
+	log.Printf("Done with the consumer.")
+}
+
+func main() {
+
+	successfullyInitialized := initApp()
+	if !successfullyInitialized {
+		return
+	}
+
+	consumeMessage("test-queue", "")
+
+}
+
+/*
+Consumer Output:
+
+INFO[0001]  [*] Waiting for messages. To exit press CTRL+C
+INFO[0001] Received Message : hello_world
+INFO[0001] Received Message : map[x:[1 2 3 4 5] y:data]
+INFO[0001] Received Message : true
+INFO[0002] Received Message : hello_world
+INFO[0004] Received Message : map[x:[1 2 3 4 5] y:data]
+INFO[0005] Received Message : true
+INFO[0008] Received Message : hello_world
+INFO[0009] Received Message : map[x:[1 2 3 4 5] y:data]
+INFO[0011] Received Message : true
+INFO[0013] Received Message : hello_world
+INFO[0014] Received Message : map[x:[1 2 3 4 5] y:data]
+INFO[0016] Received Message : true
+INFO[0018] Received Message : __done__
+INFO[0018] Received Final : __done__
+INFO[0018] Will stop listening for further messages getting published...
+INFO[0018] Done with the consumer.
 */
 ```

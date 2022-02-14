@@ -43,19 +43,19 @@ func IsJSON(str string) bool {
 }
 
 func IsMap(data interface{}) bool {
-	if data == nil {
-		return false
-	} else {
-		return reflect.ValueOf(data).Kind() == reflect.Map
-	}
+    if data == nil {
+        return false
+    } else {
+        return reflect.ValueOf(data).Kind() == reflect.Map
+    }
 }
 
 func IsString(data interface{}) bool {
-	if data == nil {
-		return false
-	} else {
-		return reflect.ValueOf(data).Kind() == reflect.String
-	}
+    if data == nil {
+        return false
+    } else {
+        return reflect.ValueOf(data).Kind() == reflect.String
+    }
 }
 ```
 #### [Convert JSON To String And String To JSON](#convert-json-to-string-and-string-to-json)

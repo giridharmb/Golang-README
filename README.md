@@ -1,5 +1,7 @@
 ### Golang Snippets
 
+[Create Random String Of Fixed Length](#create-random-string-of-fixed-length)
+
 [Check If String Is Valid JSON](#check-if-string-is-valid-json)
 
 [Convert JSON To String And String To JSON](#convert-json-to-string-and-string-to-json)
@@ -33,6 +35,23 @@
 [RabbitMQ Producer And Consumer](#rabbitmq-producer-and-consumer)
 
 <hr/>
+
+#### [Create Random String Of Fixed Length](#create-random-string-of-fixed-length)
+```golang
+func init() {
+    rand.Seed(time.Now().UnixNano())
+}
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func RandStringRunes(n int) string {
+    b := make([]rune, n)
+    for i := range b {
+        b[i] = letterRunes[rand.Intn(len(letterRunes))]
+    }
+    return string(b)
+}
+```
 
 #### [Check If String Is Valid JSON](#check-if-string-is-valid-json)
 

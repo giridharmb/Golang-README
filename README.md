@@ -1,5 +1,7 @@
 ### Golang Snippets
 
+[Check If String Is Valid JSON](#check-if-string-is-valid-json)
+
 [Convert JSON To String And String To JSON](#convert-json-to-string-and-string-to-json)
 
 [Check Data Type](#Check-Data-Type)
@@ -32,6 +34,30 @@
 
 <hr/>
 
+#### [Check If String Is Valid JSON](#check-if-string-is-valid-json)
+
+```golang
+func IsJSON(str string) bool {
+    var js json.RawMessage
+    return json.Unmarshal([]byte(str), &js) == nil
+}
+
+func IsMap(data interface{}) bool {
+	if data == nil {
+		return false
+	} else {
+		return reflect.ValueOf(data).Kind() == reflect.Map
+	}
+}
+
+func IsString(data interface{}) bool {
+	if data == nil {
+		return false
+	} else {
+		return reflect.ValueOf(data).Kind() == reflect.String
+	}
+}
+```
 #### [Convert JSON To String And String To JSON](#convert-json-to-string-and-string-to-json)
 
 ```golang

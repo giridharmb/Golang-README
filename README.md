@@ -34,6 +34,8 @@
 
 [RabbitMQ Producer And Consumer](#rabbitmq-producer-and-consumer)
 
+[Generic HTTP Request](#generic-http-request)
+
 <hr/>
 
 #### [Create Random String Of Fixed Length](#create-random-string-of-fixed-length)
@@ -1830,4 +1832,465 @@ INFO[0018] Received Final : __done__
 INFO[0018] Will stop listening for further messages getting published...
 INFO[0018] Done with the consumer.
 */
+```
+
+#### [Generic HTTP Request](#generic-http-request)
+
+```golang
+package main
+
+import (
+    "bytes"
+    "crypto/tls"
+    "encoding/json"
+    "errors"
+    "fmt"
+    "io/ioutil"
+    "math/rand"
+    "net"
+    "net/http"
+    "net/url"
+    "reflect"
+    "time"
+
+    log "github.com/sirupsen/logrus"
+)
+
+type HttpRequestType int64
+
+var (
+    HttpTLSTimeOut time.Duration = 10 // 10 seconds
+    MyHTTPProxy    string        = "http://my-proxy-server.company.com:5050"
+)
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+const (
+    GET HttpRequestType = iota
+    HEAD
+    POST
+    PUT
+    PATCH
+    DELETE
+)
+
+type Request struct {
+    URL           string
+    Payload       string
+    RequestMethod HttpRequestType
+    Headers       string
+    ProxyURL      string
+}
+
+type RequestMap struct {
+    URL           string
+    Payload       interface{} // you are expected to set this as a string or map[string]interface{}
+    RequestMethod HttpRequestType
+    Headers       interface{} // you are expected to set this as a string or map[string]string
+    ProxyURL      string
+}
+
+func (r HttpRequestType) String() string {
+    switch r {
+    case GET:
+        return "GET"
+    case HEAD:
+        return "HEAD"
+    case POST:
+        return "POST"
+    case PUT:
+        return "PUT"
+    case PATCH:
+        return "PATCH"
+    case DELETE:
+        return "DELETE"
+    }
+    return "UNKNOWN"
+}
+
+type IHTTPRequest interface {
+    HTTPRequest() (string, *http.Response, error)
+}
+
+type IHTTPRequestMap interface {
+    HTTPRequest() (string, *http.Response, error)
+}
+
+func IsMap(data interface{}) bool {
+    if data == nil {
+        return false
+    } else {
+        return reflect.ValueOf(data).Kind() == reflect.Map
+    }
+}
+
+func IsString(data interface{}) bool {
+    if data == nil {
+        return false
+    } else {
+        return reflect.ValueOf(data).Kind() == reflect.String
+    }
+}
+
+func IsJSON(str string) bool {
+    var js json.RawMessage
+    return json.Unmarshal([]byte(str), &js) == nil
+}
+
+func initRand() {
+    rand.Seed(time.Now().UnixNano())
+}
+
+func RandStringRunes(n int) string {
+    initRand()
+    b := make([]rune, n)
+    for i := range b {
+        b[i] = letterRunes[rand.Intn(len(letterRunes))]
+    }
+    return string(b)
+}
+
+func (r RequestMap) HTTPRequest() (string, int, error) {
+    log.Printf("URL : %v", r.URL)
+    log.Printf("Payload : %v", r.Payload)
+    log.Printf("RequestMethod : %v", r.RequestMethod)
+    log.Printf("Headers : %v", r.Headers)
+
+    responseString := ""
+    responseHttpStatusCode := -1
+
+    var headersMap map[string]interface{}
+    var req *http.Request
+    var err error
+    var message string
+
+    var tr *http.Transport
+
+    payloadBytes := make([]byte, 0)
+    payloadStr := ""
+
+    headersBytes := make([]byte, 0)
+    headersStr := ""
+
+    // ---- r.Headers : should be a JSON string or map[string]string ------
+
+    if IsString(r.Headers) {
+        // if headers is string
+        headersStr = r.Headers.(string)
+        if !IsJSON(headersStr) {
+            message = fmt.Sprintf("headers is not a valid JSON")
+            log.Error(message)
+            return responseString, responseHttpStatusCode, errors.New(message)
+        }
+        log.Printf("headers is a valid JSON STRING")
+    } else {
+        // if it is map[string]string or map[string]interface{}
+        if IsMap(r.Headers) {
+            log.Printf("headers is a valid map")
+            headersBytes, err = json.Marshal(r.Headers)
+            if err != nil {
+                message = fmt.Sprintf("could not marshal json headers map to string : %v", err.Error())
+                log.Error(message)
+                return responseString, responseHttpStatusCode, errors.New(message)
+            }
+            headersStr = string(headersBytes)
+            // log.Printf("headersStr : %v", headersStr)
+        } else {
+            // If is NOT a map
+            log.Printf("headers is not a map")
+            headersStr = ""
+        }
+    }
+
+    // ---- r.Payload : should be a JSON string or map[string]interface{} ------
+
+    if IsString(r.Payload) {
+        // if it is a string
+        payloadStr = r.Payload.(string)
+        if !IsJSON(headersStr) {
+            message = fmt.Sprintf("payload is not a valid JSON")
+            log.Error(message)
+            return responseString, responseHttpStatusCode, errors.New(message)
+        }
+        log.Printf("payload is a valid JSON string")
+    } else {
+        if IsMap(r.Payload) {
+            // if it is map[string]string or map[string]interface{}
+            log.Printf("payload is a valid map")
+            payloadBytes, err = json.Marshal(r.Payload)
+            if err != nil {
+                message = fmt.Sprintf("could not marshal json payload map to string : %v", err.Error())
+                log.Error(message)
+                return responseString, responseHttpStatusCode, errors.New(message)
+            }
+            payloadStr = string(payloadBytes)
+            log.Printf("payloadStr : %v", payloadStr)
+        } else {
+            // If is NOT a map
+            log.Printf("payload is not a map")
+            payloadStr = ""
+        }
+    }
+
+    if r.ProxyURL == "" {
+        tr = &http.Transport{
+            TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+            Dial: (&net.Dialer{
+                Timeout:   0,
+                KeepAlive: 0,
+            }).Dial,
+            TLSHandshakeTimeout: HttpTLSTimeOut * time.Second,
+        }
+    } else {
+        proxyUrl, _ := url.Parse(MyHTTPProxy)
+        tr = &http.Transport{
+            TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+            Dial: (&net.Dialer{
+                Timeout:   0,
+                KeepAlive: 0,
+            }).Dial,
+            Proxy:               http.ProxyURL(proxyUrl),
+            TLSHandshakeTimeout: HttpTLSTimeOut * time.Second,
+        }
+    }
+
+    if payloadStr == "" {
+        req, err = http.NewRequest(r.RequestMethod.String(), r.URL, nil)
+        if err != nil {
+            message = fmt.Sprintf("could not create a new http request : %v", err.Error())
+            log.Error(message)
+            return responseString, responseHttpStatusCode, errors.New(message)
+        }
+    } else {
+        req, err = http.NewRequest(r.RequestMethod.String(), r.URL, bytes.NewBuffer([]byte(payloadStr)))
+        if err != nil {
+            message = fmt.Sprintf("could not create a new http request : %v", err.Error())
+            log.Error(message)
+            return responseString, responseHttpStatusCode, errors.New(message)
+        }
+    }
+
+    err = json.Unmarshal([]byte(headersStr), &headersMap)
+    if err != nil {
+        message = fmt.Sprintf("could not unmarshal headers json string : %v", err.Error())
+        log.Error(message)
+        return responseString, responseHttpStatusCode, errors.New(message)
+    }
+
+    if len(headersMap) != 0 {
+        for key, value := range headersMap {
+            valueStr, ok := value.(string)
+            if !ok {
+                continue
+            }
+            req.Header.Set(key, valueStr)
+        }
+    }
+
+    req.Header.Set("Connection", "close")
+
+    client := &http.Client{Transport: tr}
+
+    resp, err := client.Do(req)
+    if err != nil {
+        message = fmt.Sprintf("http client could not execute a http request : %v", err.Error())
+        log.Error(message)
+        return responseString, responseHttpStatusCode, errors.New(message)
+    }
+    defer resp.Body.Close()
+
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        message = fmt.Sprintf("could not read http response body : %v", err.Error())
+        log.Error(message)
+        return responseString, responseHttpStatusCode, errors.New(message)
+    }
+    // convert body to string
+    responseString = string(body)
+    responseHttpStatusCode = resp.StatusCode
+    return responseString, responseHttpStatusCode, nil
+}
+
+/*
+Refer to this : https://gorest.co.in/
+*/
+
+func main() {
+
+    randomStr := RandStringRunes(5)
+
+    // --------- user-case-1 : get list of users -------------
+
+    log.Printf("@ GET USERS (HTTP GET) ...")
+
+    headers := fmt.Sprintf(`{
+        "Authorization":"Bearer WHT469Z2H7EQ9TFUNMSPHAMPF9JBVKLBGFHUPLJ4266QRAF56ZXM5HDHE7GVRY4W", 
+        "Content-Type" : "application/json",
+        "Accept" : "application/json"
+    }`)
+    request := RequestMap{
+        URL:           "https://gorest.co.in/public/v2/users?page=1",
+        Payload:       "",
+        RequestMethod: GET,
+        Headers:       headers,
+        ProxyURL:      "",
+    }
+    response, responseStatusCode, err := request.HTTPRequest()
+    if err != nil {
+        log.Print(err)
+        return
+    }
+    log.Printf("response : %v", response)
+    log.Printf("responseStatusCode : %v", responseStatusCode)
+
+    // --------- user-case-2 : create user -------------
+
+    log.Printf("@ CREATE USER (HTTP POST) ...")
+
+    payload := fmt.Sprintf(`{"name":"Linus Torvalds", "gender":"male", "email":"linus.torvalds@%v.com", "status":"active"}`, randomStr)
+
+    log.Printf("payload : %v", payload)
+
+    request = RequestMap{
+        URL:           "https://gorest.co.in/public/v2/users",
+        Payload:       payload,
+        RequestMethod: POST,
+        Headers:       headers,
+        ProxyURL:      "",
+    }
+
+    response, responseStatusCode, err = request.HTTPRequest()
+    if err != nil {
+        log.Print(err)
+        return
+    }
+    log.Printf("response : %v", response)
+    log.Printf("responseStatusCode : %v", responseStatusCode)
+
+    var jsonMap map[string]interface{}
+    err = json.Unmarshal([]byte(response), &jsonMap)
+    if err != nil {
+        log.Errorf("could not convert response (string) to json map : %v", err.Error())
+        return
+    }
+
+    log.Printf("jsonMap : %v", jsonMap)
+
+    userID := jsonMap["id"].(float64)
+
+    log.Printf("userID : (%v)", userID)
+
+    // --------- user-case-3 : update/patch user -------------
+
+    randomStr = RandStringRunes(5)
+
+    log.Printf("@ UDPATE (HTTP PATCH) USER ...")
+
+    payloadMap := make(map[string]string)
+    payloadMap["name"] = "Linus Torvalds (NEW)"
+    payloadMap["gender"] = "male"
+    payloadMap["email"] = fmt.Sprintf(`linux-torvalds@%v.com`, randomStr)
+    payloadMap["status"] = "active"
+
+    headersMap := make(map[string]string)
+    headersMap["Authorization"] = "Bearer WHT469Z2H7EQ9TFUNMSPHAMPF9JBVKLBGFHUPLJ4266QRAF56ZXM5HDHE7GVRY4W"
+    headersMap["Content-Type"] = "application/json"
+    headersMap["Accept"] = "application/json"
+
+    userURL := fmt.Sprintf(`https://gorest.co.in/public/v2/users/%v`, userID)
+
+    log.Printf("userURL %v", userURL)
+
+    request = RequestMap{
+        URL:           userURL,
+        Payload:       payloadMap,
+        RequestMethod: PATCH,
+        Headers:       headersMap,
+        ProxyURL:      "",
+    }
+
+    response, responseStatusCode, err = request.HTTPRequest()
+    if err != nil {
+        log.Print(err)
+        return
+    }
+    log.Printf("response : %v", response)
+    log.Printf("responseStatusCode : %v", responseStatusCode)
+
+    // --------- user-case-3 : delete user -------------
+
+    log.Printf("@ DELETE (HTTP DELETE) USER ...")
+
+    request = RequestMap{
+        URL:           userURL,
+        Payload:       payloadMap,
+        RequestMethod: DELETE,
+        Headers:       headersMap,
+        ProxyURL:      "",
+    }
+
+    response, responseStatusCode, err = request.HTTPRequest()
+    if err != nil {
+        log.Print(err)
+        return
+    }
+    log.Printf("response : %v", response)
+    log.Printf("responseStatusCode : %v", responseStatusCode)
+}
+```
+
+Output
+
+```bash
+# go run main.go
+INFO[0000] @ GET USERS (HTTP GET) ...
+INFO[0000] URL : https://gorest.co.in/public/v2/users?page=1
+INFO[0000] Payload :
+INFO[0000] RequestMethod : GET
+INFO[0000] Headers : {
+        "Authorization":"Bearer WHT469Z2H7EQ9TFUNMSPHAMPF9JBVKLBGFHUPLJ4266QRAF56ZXM5HDHE7GVRY4W",
+        "Content-Type" : "application/json",
+        "Accept" : "application/json"
+    }
+INFO[0000] headers is a valid JSON STRING
+INFO[0000] payload is a valid JSON string
+INFO[0001] response : [{"id":5313,"name":"Linus Torvalds","email":"linus.torvalds@whUTo.com","gender":"male","status":"active"},{"id":5312,"name":"Linus Torvalds","email":"linus.torvalds@HQwWI.com","gender":"male","status":"active"},{"id":5309,"name":"Linus Torvalds","email":"linus.torvalds@wPVTR.com","gender":"male","status":"active"},{"id":5307,"name":"Linus Torvalds","email":"linus.torvalds@nPqFq.com","gender":"male","status":"active"},{"id":5290,"name":"Linus Torvalds","email":"linus.torvalds@antimicrosoft.com","gender":"male","status":"active"},{"id":3901,"name":"Damodara Bhat","email":"bhat_damodara@waters.co","gender":"female","status":"inactive"},{"id":3893,"name":"Chidaatma Iyengar I","email":"i_iyengar_chidaatma@king.io","gender":"male","status":"active"},{"id":3891,"name":"Rev. Brahmabrata Patil","email":"brahmabrata_patil_rev@bahringer.info","gender":"male","status":"inactive"},{"id":3890,"name":"Msgr. Atreyi Gowda","email":"atreyi_msgr_gowda@barton.com","gender":"male","status":"active"},{"id":3889,"name":"Balaaditya Joshi Jr.","email":"balaaditya_joshi_jr@ratke-oreilly.info","gender":"female","status":"active"},{"id":3888,"name":"Aasha Kocchar","email":"kocchar_aasha@funk.com","gender":"female","status":"active"},{"id":3887,"name":"Ramesh Ahuja DVM","email":"dvm_ahuja_ramesh@west.biz","gender":"male","status":"inactive"},{"id":3886,"name":"Manjusha Kakkar CPA","email":"kakkar_cpa_manjusha@reichert-barrows.io","gender":"male","status":"active"},{"id":3884,"name":"Tanushri Iyer","email":"iyer_tanushri@renner.name","gender":"male","status":"inactive"},{"id":3883,"name":"Niro Verma","email":"niro_verma@nicolas.name","gender":"male","status":"inactive"},{"id":3882,"name":"Devagya Tandon","email":"devagya_tandon@bosco.org","gender":"female","status":"active"},{"id":3881,"name":"Mani Pilla","email":"mani_pilla@kilback.name","gender":"female","status":"inactive"},{"id":3879,"name":"Dhyaneshwar Desai","email":"desai_dhyaneshwar@lueilwitz.co","gender":"female","status":"active"},{"id":3878,"name":"Ankal Chopra","email":"chopra_ankal@olson-schaden.com","gender":"female","status":"inactive"},{"id":3876,"name":"Gotum Shukla","email":"shukla_gotum@mcclure.com","gender":"male","status":"inactive"}]
+INFO[0001] responseStatusCode : 200
+INFO[0001] @ CREATE USER (HTTP POST) ...
+INFO[0001] payload : {"name":"Linus Torvalds", "gender":"male", "email":"linus.torvalds@DGYIc.com", "status":"active"}
+INFO[0001] URL : https://gorest.co.in/public/v2/users
+INFO[0001] Payload : {"name":"Linus Torvalds", "gender":"male", "email":"linus.torvalds@DGYIc.com", "status":"active"}
+INFO[0001] RequestMethod : POST
+INFO[0001] Headers : {
+        "Authorization":"Bearer WHT469Z2H7EQ9TFUNMSPHAMPF9JBVKLBGFHUPLJ4266QRAF56ZXM5HDHE7GVRY4W",
+        "Content-Type" : "application/json",
+        "Accept" : "application/json"
+    }
+INFO[0001] headers is a valid JSON STRING
+INFO[0001] payload is a valid JSON string
+INFO[0002] response : {"id":5315,"name":"Linus Torvalds","email":"linus.torvalds@DGYIc.com","gender":"male","status":"active"}
+INFO[0002] responseStatusCode : 201
+INFO[0002] jsonMap : map[email:linus.torvalds@DGYIc.com gender:male id:5315 name:Linus Torvalds status:active]
+INFO[0002] userID : (5315)
+INFO[0002] @ UDPATE (HTTP PATCH) USER ...
+INFO[0002] userURL https://gorest.co.in/public/v2/users/5315
+INFO[0002] URL : https://gorest.co.in/public/v2/users/5315
+INFO[0002] Payload : map[email:linux-torvalds@NLOgj.com gender:male name:Linus Torvalds (NEW) status:active]
+INFO[0002] RequestMethod : PATCH
+INFO[0002] Headers : map[Accept:application/json Authorization:Bearer WHT469Z2H7EQ9TFUNMSPHAMPF9JBVKLBGFHUPLJ4266QRAF56ZXM5HDHE7GVRY4W Content-Type:application/json]
+INFO[0002] headers is a valid map
+INFO[0002] payload is a valid map
+INFO[0002] payloadStr : {"email":"linux-torvalds@NLOgj.com","gender":"male","name":"Linus Torvalds (NEW)","status":"active"}
+INFO[0003] response : {"email":"linux-torvalds@NLOgj.com","name":"Linus Torvalds (NEW)","gender":"male","status":"active","id":5315}
+INFO[0003] responseStatusCode : 200
+INFO[0003] @ DELETE (HTTP DELETE) USER ...
+INFO[0003] URL : https://gorest.co.in/public/v2/users/5315
+INFO[0003] Payload : map[email:linux-torvalds@NLOgj.com gender:male name:Linus Torvalds (NEW) status:active]
+INFO[0003] RequestMethod : DELETE
+INFO[0003] Headers : map[Accept:application/json Authorization:Bearer WHT469Z2H7EQ9TFUNMSPHAMPF9JBVKLBGFHUPLJ4266QRAF56ZXM5HDHE7GVRY4W Content-Type:application/json]
+INFO[0003] headers is a valid map
+INFO[0003] payload is a valid map
+INFO[0003] payloadStr : {"email":"linux-torvalds@NLOgj.com","gender":"male","name":"Linus Torvalds (NEW)","status":"active"}
+INFO[0004] response :
+INFO[0004] responseStatusCode : 204
 ```

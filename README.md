@@ -2303,96 +2303,96 @@ INFO[0004] responseStatusCode : 204
 package main
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io/ioutil"
-	"log"
-	"os"
+    "encoding/json"
+    "errors"
+    "fmt"
+    "io/ioutil"
+    "log"
+    "os"
 )
 
 // DO CAUSE PANIC !
 // This is just an example to show recover()
 
 func mayPanic() {
-	panic("a problem")
+    panic("a problem")
 }
 
 func readFile(myFile string) (data interface{}, err error) {
-	message := ""
-	fileBytes, err := ioutil.ReadFile(myFile)
-	if err != nil {
-		message = fmt.Sprintf("readFile() : there was an error reading the file : (%v) : %v", myFile, err.Error())
-		log.Printf(message)
-		return data, errors.New(message)
-	}
+    message := ""
+    fileBytes, err := ioutil.ReadFile(myFile)
+    if err != nil {
+        message = fmt.Sprintf("readFile() : there was an error reading the file : (%v) : %v", myFile, err.Error())
+        log.Printf(message)
+        return data, errors.New(message)
+    }
 
-	err = json.Unmarshal(fileBytes, &data)
-	if err != nil {
-		message = fmt.Sprintf("readFile() : there was an error unmarshalling json for the file : (%v) : %v", myFile, err.Error())
-		log.Printf(message)
-		return data, errors.New(message)
-	}
-	return data, nil
+    err = json.Unmarshal(fileBytes, &data)
+    if err != nil {
+        message = fmt.Sprintf("readFile() : there was an error unmarshalling json for the file : (%v) : %v", myFile, err.Error())
+        log.Printf(message)
+        return data, errors.New(message)
+    }
+    return data, nil
 
 }
 
 func doStuff() (data map[string]string, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered in doStuff() Error: %v", r)
-			// find out exactly what the error was and set err
-			switch x := r.(type) {
-			case string:
-				log.Println("r.type == string")
-				err = errors.New(x)
-			case error:
-				log.Println("r.type == error")
-				err = x
-			default:
-				log.Println("r.type == default")
-				err = errors.New("defer : unknown panic in")
-			}
-		}
-	}()
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf("Recovered in doStuff() Error: %v", r)
+            // find out exactly what the error was and set err
+            switch x := r.(type) {
+            case string:
+                log.Println("r.type == string")
+                err = errors.New(x)
+            case error:
+                log.Println("r.type == error")
+                err = x
+            default:
+                log.Println("r.type == default")
+                err = errors.New("defer : unknown panic in")
+            }
+        }
+    }()
 
-	// initialize data
-	data = make(map[string]string)
+    // initialize data
+    data = make(map[string]string)
 
-	data["name"] = "giridhar"
-	data["company"] = "google"
+    data["name"] = "giridhar"
+    data["company"] = "google"
 
-	myData, err := readFile("my_data_.json")
-	if err != nil {
-		panic(err)
-	}
-	log.Printf("file was read successfully.")
-	log.Printf("file contents:")
-	log.Printf("%v", myData)
+    myData, err := readFile("my_data_.json")
+    if err != nil {
+        panic(err)
+    }
+    log.Printf("file was read successfully.")
+    log.Printf("file contents:")
+    log.Printf("%v", myData)
 
-	// //////////// pretty print the JSON data | start ///////////////////////////
+    // //////////// pretty print the JSON data | start ///////////////////////////
 
-	dataBytes, err := json.MarshalIndent(myData, "", "    ")
-	if err != nil {
-		panic(err)
-		//log.Printf("could not pretty pring the json data : %v", err.Error())
-		//os.Exit(1)
-	}
-	fmt.Printf("\npretty json:\n")
-	fmt.Printf("\n\n%v\n\n", string(dataBytes))
+    dataBytes, err := json.MarshalIndent(myData, "", "    ")
+    if err != nil {
+        panic(err)
+        //log.Printf("could not pretty pring the json data : %v", err.Error())
+        //os.Exit(1)
+    }
+    fmt.Printf("\npretty json:\n")
+    fmt.Printf("\n\n%v\n\n", string(dataBytes))
 
-	// //////////// pretty print the JSON data | end ///////////////////////////
+    // //////////// pretty print the JSON data | end ///////////////////////////
 
-	return data, nil
+    return data, nil
 }
 
 func main() {
-	someData, err := doStuff()
-	if err != nil {
-		log.Printf("main() : %v", err.Error())
-		os.Exit(1)
-	}
-	log.Printf("someData : %v", someData)
+    someData, err := doStuff()
+    if err != nil {
+        log.Printf("main() : %v", err.Error())
+        os.Exit(1)
+    }
+    log.Printf("someData : %v", someData)
 }
 ```
 

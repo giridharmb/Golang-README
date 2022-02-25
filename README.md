@@ -36,6 +36,8 @@
 
 [Generic HTTP Request](#generic-http-request)
 
+[Panic And Recover](#panic-and-recover)
+
 <hr/>
 
 #### [Create Random String Of Fixed Length](#create-random-string-of-fixed-length)
@@ -2293,4 +2295,143 @@ INFO[0003] payload is a valid map
 INFO[0003] payloadStr : {"email":"linux-torvalds@NLOgj.com","gender":"male","name":"Linus Torvalds (NEW)","status":"active"}
 INFO[0004] response :
 INFO[0004] responseStatusCode : 204
+```
+
+#### [Panic And Recover](#panic-and-recover)
+
+```golang
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
+)
+
+// DO CAUSE PANIC !
+// This is just an example to show recover()
+
+func mayPanic() {
+	panic("a problem")
+}
+
+func readFile(myFile string) (data interface{}, err error) {
+	message := ""
+	fileBytes, err := ioutil.ReadFile(myFile)
+	if err != nil {
+		message = fmt.Sprintf("readFile() : there was an error reading the file : (%v) : %v", myFile, err.Error())
+		log.Printf(message)
+		return data, errors.New(message)
+	}
+
+	err = json.Unmarshal(fileBytes, &data)
+	if err != nil {
+		message = fmt.Sprintf("readFile() : there was an error unmarshalling json for the file : (%v) : %v", myFile, err.Error())
+		log.Printf(message)
+		return data, errors.New(message)
+	}
+	return data, nil
+
+}
+
+func doStuff() (data map[string]string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Recovered in doStuff() Error: %v", r)
+			// find out exactly what the error was and set err
+			switch x := r.(type) {
+			case string:
+				log.Println("r.type == string")
+				err = errors.New(x)
+			case error:
+				log.Println("r.type == error")
+				err = x
+			default:
+				log.Println("r.type == default")
+				err = errors.New("defer : unknown panic in")
+			}
+		}
+	}()
+
+	// initialize data
+	data = make(map[string]string)
+
+	data["name"] = "giridhar"
+	data["company"] = "google"
+
+	myData, err := readFile("my_data_.json")
+	if err != nil {
+		panic(err)
+	}
+	log.Printf("file was read successfully.")
+	log.Printf("file contents:")
+	log.Printf("%v", myData)
+
+	// //////////// pretty print the JSON data | start ///////////////////////////
+
+	dataBytes, err := json.MarshalIndent(myData, "", "    ")
+	if err != nil {
+		panic(err)
+		//log.Printf("could not pretty pring the json data : %v", err.Error())
+		//os.Exit(1)
+	}
+	fmt.Printf("\npretty json:\n")
+	fmt.Printf("\n\n%v\n\n", string(dataBytes))
+
+	// //////////// pretty print the JSON data | end ///////////////////////////
+
+	return data, nil
+}
+
+func main() {
+	someData, err := doStuff()
+	if err != nil {
+		log.Printf("main() : %v", err.Error())
+		os.Exit(1)
+	}
+	log.Printf("someData : %v", someData)
+}
+```
+
+Sample JSON File : `my_data.json` (Change It To Introduce Errors In The above code)
+
+```json
+[
+  {
+    "_id": "62195a4394aa157c5d182c13",
+    "index": 0,
+    "guid": "10b56e50-048f-4a53-8ef3-6ea1a4a2401f",
+    "isActive": false,
+    "balance": "$3,108.51",
+    "picture": "http://placehold.it/32x32",
+    "age": 37,
+    "eyeColor": "blue",
+    "name": "Pennington Hendrix",
+    "gender": "male",
+    "company": "DAIDO",
+    "email": "penningtonhendrix@daido.com",
+    "phone": "+1 (943) 556-2230",
+    "address": "476 Gerritsen Avenue, Zarephath, South Dakota, 3797",
+    "about": "Aute reprehenderit ipsum nisi pariatur veniam deserunt qui laborum. Nisi id pariatur mollit et velit minim occaecat Lorem sint. Do consequat officia qui magna sit eiusmod excepteur irure consequat. Velit est irure ad pariatur cupidatat proident cupidatat deserunt. Duis ex enim voluptate deserunt in commodo. Esse magna eiusmod aliquip quis irure sunt sit culpa officia voluptate eu nisi ad adipisicing. Velit ut minim est reprehenderit in esse consectetur ut irure.\r\n",
+    "registered": "2015-05-07T05:10:07 +07:00",
+    "latitude": 31.067813,
+    "longitude": 68.588042,
+    "tags": [
+      "id",
+      "eiusmod",
+      "sint"
+    ],
+    "friends": [
+      {
+        "id": 0,
+        "name": "Wooten Bartlett"
+      }
+    ],
+    "greeting": "Hello, Pennington Hendrix! You have 1 unread messages.",
+    "favoriteFruit": "apple"
+  }
+]
 ```

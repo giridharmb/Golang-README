@@ -38,6 +38,8 @@
 
 [Panic And Recover](#panic-and-recover)
 
+[HTTP Web Server And REST API](https://github.com/giridharmb/golang-http-server-rest-api)
+
 <hr/>
 
 #### [Create Random String Of Fixed Length](#create-random-string-of-fixed-length)

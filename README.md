@@ -40,7 +40,7 @@
 
 [HTTP Web Server And REST API](https://github.com/giridharmb/golang-http-server-rest-api)
 
-<hr/>
+[PostgreSQL And HTTP REST API](https://github.com/giridharmb/golang-pgsql-http-rest-api)
 
 #### [Create Random String Of Fixed Length](#create-random-string-of-fixed-length)
 ```golang

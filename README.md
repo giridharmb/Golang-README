@@ -46,6 +46,8 @@
 
 [User Prompts And Inputs](#user-prompts-and-inputs)
 
+[Reading YAML](#reading-yaml)
+
 <hr/>
 
 #### [Golang Sessions](#golang-sessions)
@@ -2675,4 +2677,93 @@ func main() {
     s := strings.Join(answers, ", ")
     fmt.Println("Oh, I see! You like", s)
 }
+```
+
+#### [Reading YAML](#reading-yaml)
+
+`main.go`
+
+```golang
+package main
+
+import (
+    yaml "gopkg.in/yaml.v3"
+    "io/ioutil"
+    "log"
+)
+
+func main() {
+
+    yfile, err := ioutil.ReadFile("test.yaml")
+
+    if err != nil {
+
+        log.Fatal(err)
+    }
+
+    data := make(map[string]interface{})
+
+    err2 := yaml.Unmarshal(yfile, &data)
+    if err2 != nil {
+        log.Fatal(err2)
+    }
+
+    for key, value := range data {
+        dbName := key
+        log.Printf("dbName : %v", dbName)
+        for key2, value2 := range value.(map[string]interface{}) {
+            tableName := key2
+            log.Printf("tableName : %v", tableName)
+            tableItems := value2.([]interface{})
+            for _, tableItem := range tableItems {
+                log.Printf("tableItem : %v", tableItem)
+            }
+        }
+    }
+}
+
+/*
+Output
+
+# go run main.go
+2022/03/15 14:56:52 dbName : db1
+2022/03/15 14:56:52 tableName : schema1.table1
+2022/03/15 14:56:52 tableItem : col1
+2022/03/15 14:56:52 tableItem : col2
+2022/03/15 14:56:52 tableName : schema2.table2
+2022/03/15 14:56:52 tableItem : col3
+2022/03/15 14:56:52 tableItem : col4
+2022/03/15 14:56:52 tableItem : col5
+2022/03/15 14:56:52 dbName : db2
+2022/03/15 14:56:52 tableName : schema2.table4
+2022/03/15 14:56:52 tableItem : col20
+2022/03/15 14:56:52 tableItem : col21
+2022/03/15 14:56:52 tableItem : col22
+2022/03/15 14:56:52 tableName : schema1.table3
+2022/03/15 14:56:52 tableItem : col10
+2022/03/15 14:56:52 tableItem : col11
+*/
+```
+
+`test.yaml`
+
+```yaml
+---
+db1:
+  schema1.table1:
+    - col1
+    - col2
+  schema2.table2:
+    - col3
+    - col4
+    - col5
+
+db2:
+  schema1.table3:
+    - col10
+    - col11
+  schema2.table4:
+    - col20
+    - col21
+    - col22
 ```

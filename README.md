@@ -1,5 +1,7 @@
 ### Golang Snippets
 
+[Server Sent Events](#server-sent-events)
+
 [Golang Sessions](#golang-sessions)
 
 [Create Random String Of Fixed Length](#create-random-string-of-fixed-length)
@@ -49,6 +51,137 @@
 [Reading YAML](#reading-yaml)
 
 <hr/>
+
+#### [Server Sent Events](#server-sent-events)
+
+`main.go`
+
+```golang
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "github.com/gofiber/adaptor/v2"
+    "github.com/gofiber/fiber/v2"
+    "log"
+    "math/rand"
+    "net/http"
+    "time"
+)
+
+type Client struct {
+    name   string
+    events chan *MetaData
+}
+type MetaData struct {
+    Data map[string]interface{}
+}
+
+func main() {
+
+    app := fiber.New()
+    app.Get("/sse", adaptor.HTTPHandler(handler(dashboardHandler)))
+    _ = app.Listen(":3000")
+}
+
+func handler(f http.HandlerFunc) http.Handler {
+    return f
+}
+
+func dashboardHandler(w http.ResponseWriter, r *http.Request) {
+
+    client := &Client{name: r.RemoteAddr, events: make(chan *MetaData, 10)}
+
+    log.Printf("r.RemoteAddr : %v", r.RemoteAddr)
+
+    go updateMetaData(client)
+
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+    w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+    w.Header().Set("Content-Type", "text/event-stream")
+    w.Header().Set("Cache-Control", "no-cache")
+    w.Header().Set("Connection", "keep-alive")
+
+    timeout := time.After(1 * time.Second)
+
+    select {
+
+    case ev := <-client.events:
+        var buf bytes.Buffer
+        enc := json.NewEncoder(&buf)
+        _ = enc.Encode(ev)
+        _, _ = fmt.Fprintf(w, "data: %v\n\n", buf.String())
+        fmt.Printf("data: %v\n", buf.String())
+
+    case <-timeout:
+        _, _ = fmt.Fprintf(w, ": nothing to sent\n\n")
+    }
+
+    if f, ok := w.(http.Flusher); ok {
+        f.Flush()
+    }
+}
+
+func updateMetaData(client *Client) {
+    for {
+        myMap := make(map[string]interface{})
+        myMap["rs"] = GetRandomString()
+        myMap["rn"] = GetRandomNumber()
+
+        db := &MetaData{Data: myMap}
+        client.events <- db
+    }
+}
+
+var letterRunesSet = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func GetRandomString() string {
+    n := 10 // length of string
+    rand.Seed(time.Now().UnixNano())
+    b := make([]rune, n)
+    for i := range b {
+        b[i] = letterRunesSet[rand.Intn(len(letterRunesSet))]
+    }
+    return string(b)
+}
+
+func GetRandomNumber() int {
+    rand.Seed(time.Now().UnixNano())
+    max := 300
+    min := 100
+    rand.Seed(time.Now().UnixNano())
+    return rand.Intn(max-min) + min
+}
+```
+
+`index.html`
+
+```html
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Blank HTML5</title>
+        <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+    </head>
+    <body>
+        <p>This is my HTML5 Boilerplate.</p>
+    </body>
+</html>
+
+<script>
+window.addEventListener('DOMContentLoaded', (event) => {
+    const source = new EventSource("http://localhost:3000/sse");
+    source.onmessage = (event) => {
+        console.log("OnMessage Called:")
+        console.log(event)
+        console.log(JSON.parse(event.data))
+    }
+});
+</script>
+```
 
 #### [Golang Sessions](#golang-sessions)
 

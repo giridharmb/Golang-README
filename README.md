@@ -52,6 +52,8 @@
 
 [MongoDB Context With Cancel](#mongodb-context-with-cancel)
 
+[Encoding And Decoding](#encoding-and-decoding)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -3057,5 +3059,217 @@ func main() {
     for id := range insertManyResult.InsertedIDs {
         fmt.Println(id)
     }
+}
+```
+
+#### [Encoding And Decoding](#encoding-and-decoding)
+
+```go
+package main
+
+import (
+    "bytes"
+    b64 "encoding/base64"
+    "encoding/gob"
+    "encoding/json"
+    "errors"
+    "fmt"
+    "log"
+)
+
+// Reference
+// Decode : https://go.dev/play/p/sye-MyuD110
+// Encode : https://go.dev/play/p/GdEEDCa6V2U
+
+// Working Example:
+// https://go.dev/play/p/bMNZUXcfc7E
+
+type Map struct {
+    Data map[string]interface{}
+}
+
+type EncodedData struct {
+    EncodedString string
+}
+
+type MapInterface interface {
+    GetByteArray() ([]byte, error)
+    Base64Encode() (string, error)
+    PrettyPrint()
+}
+
+type EncodedDataInterface interface {
+    Base64Decode() (map[string]interface{}, error)
+}
+
+// ------------------------------------------------------------------------------
+
+func (encodedData EncodedData) Base64Decode() (map[string]interface{}, error) {
+    msg := ""
+    sDec, err := b64.StdEncoding.DecodeString(encodedData.EncodedString)
+    if err != nil {
+        msg = fmt.Sprintf("error : Base64Decode : could not perform a base64 decode : %v", err.Error())
+        return nil, errors.New(msg)
+    }
+
+    myData, err := ConvertToInterface(sDec)
+    if err != nil {
+        msg = fmt.Sprintf("error : Base64Decode : could not convert array of bytes -> interface{} : %v", err.Error())
+        return nil, errors.New(msg)
+    }
+    return myData, nil
+}
+
+// ------------------------------------------------------------------------------
+
+func (data Map) GetByteArray() ([]byte, error) {
+    msg := ""
+    var buf bytes.Buffer
+    enc := gob.NewEncoder(&buf)
+    err := enc.Encode(data.Data)
+    if err != nil {
+        msg = fmt.Sprintf("error : GetBytes() : could not encode data : %v", err.Error())
+        return nil, errors.New(msg)
+    }
+    return buf.Bytes(), nil
+}
+
+func (data Map) Base64Encode() (string, error) {
+    msg := ""
+    byteArray, err := data.GetByteArray()
+    if err != nil {
+        msg = fmt.Sprintf("error : GetMap() : could not convert data (map) to byte[] : %v", err.Error())
+        return "", errors.New(msg)
+    }
+    sEnc := b64.StdEncoding.EncodeToString(byteArray)
+    return sEnc, nil
+}
+
+func (data Map) PrettyPrint() {
+    dataBytes, err := json.MarshalIndent(data.Data, "", "    ")
+    if err != nil {
+        log.Printf("error : could not MarshalIndent json : %v", err.Error())
+        return
+    }
+    fmt.Printf("\n%v\n\n", string(dataBytes))
+}
+
+func ConvertToInterface(data []byte) (map[string]interface{}, error) {
+    msg := ""
+    buf := bytes.NewBuffer(data)
+    dec := gob.NewDecoder(buf)
+    myData := make(map[string]interface{})
+    if err := dec.Decode(&myData); err != nil {
+        msg = fmt.Sprintf("error : ConvertToInterface : could not convert data (array of bytes) to interface{} : %v", err.Error())
+        return nil, errors.New(msg)
+    }
+    return myData, nil
+}
+
+func PrettyPrintData(data interface{}) {
+    dataBytes, err := json.MarshalIndent(data, "", "    ")
+    if err != nil {
+        log.Printf("error : could not MarshalIndent json : %v", err.Error())
+        return
+    }
+    fmt.Printf("\n%v\n\n", string(dataBytes))
+}
+
+func main() {
+
+    log.Printf("Standard & URL : Encoding/Decoding")
+
+    log.Println()
+
+    // ----------------------------------------------------------------------
+
+    data := "https://www.some-host.com/data?param1='{abc123!?$*&()-=@~}'"
+    
+    log.Printf("@ Standard Encoding : Data To Encode : %v", data)
+
+    log.Println()
+
+    sEnc := b64.StdEncoding.EncodeToString([]byte(data))
+    log.Printf("@ Base-64 Standard Encoded String : %v", sEnc)
+
+    sDec, _ := b64.StdEncoding.DecodeString(sEnc)
+    decodedStr := string(sDec)
+    log.Printf("@ Base-64 Standard Decoded String : %v", decodedStr)
+
+    log.Println()
+
+    uEnc := b64.URLEncoding.EncodeToString([]byte(data))
+    log.Printf("@ Base-64 URL Encoded String : %v", uEnc)
+
+    uDec, _ := b64.URLEncoding.DecodeString(uEnc)
+    log.Printf("@ Base-64 URL Decoded String : %v", string(uDec))
+
+    log.Println()
+
+    // ----------------------------------------------------------------------
+
+    log.Printf("Encoding/Decoding of map[string]interface{}")
+
+    log.Println()
+
+    // ----------------------------------------------------------------------
+
+    myData1 := make(map[string]interface{})
+    myData1["hello"] = "world"
+    myData1["test"] = []int64{1, 2, 3, 4}
+    myData1["x"] = 4.556
+
+    // ----------------------------------------------------------------------
+
+    log.Printf("Data To Encode : %v", myData1)
+
+    log.Println()
+
+    d1 := Map{Data: myData1}
+
+    dataEncoded, _ := d1.Base64Encode()
+
+    log.Printf("> dataEncoded : %v", dataEncoded)
+
+    d2 := EncodedData{EncodedString: dataEncoded}
+
+    myMap, _ := d2.Base64Decode()
+
+    log.Printf("> After Decoding : myMap :")
+
+    PrettyPrintData(myMap)
+
+}
+```
+
+#### Output
+
+```bash
+2022/08/19 10:08:12 Standard & URL : Encoding/Decoding
+2022/08/19 10:08:12
+2022/08/19 10:08:12 @ Standard Encoding : Data To Encode : https://www.some-host.com/data?param1='{abc123!?$*&()-=@~}'
+2022/08/19 10:08:12
+2022/08/19 10:08:12 @ Base-64 Standard Encoded String : aHR0cHM6Ly93d3cuc29tZS1ob3N0LmNvbS9kYXRhP3BhcmFtMT0ne2FiYzEyMyE/JComKCktPUB+fSc=
+2022/08/19 10:08:12 @ Base-64 Standard Decoded String : https://www.some-host.com/data?param1='{abc123!?$*&()-=@~}'
+2022/08/19 10:08:12
+2022/08/19 10:08:12 @ Base-64 URL Encoded String : aHR0cHM6Ly93d3cuc29tZS1ob3N0LmNvbS9kYXRhP3BhcmFtMT0ne2FiYzEyMyE_JComKCktPUB-fSc=
+2022/08/19 10:08:12 @ Base-64 URL Decoded String : https://www.some-host.com/data?param1='{abc123!?$*&()-=@~}'
+2022/08/19 10:08:12
+2022/08/19 10:08:12 Encoding/Decoding of map[string]interface{}
+2022/08/19 10:08:12
+2022/08/19 10:08:12 Data To Encode : map[hello:world test:[1 2 3 4] x:4.556]
+2022/08/19 10:08:12
+2022/08/19 10:08:12 > dataEncoded : Dv+BBAEC/4IAAQwBEAAAM/+CAAMFaGVsbG8Gc3RyaW5nDAcABXdvcmxkBHRlc3QHW11pbnQ2NP+DAgEC/4QAAQQAAB//hAYABAIEBggBeAdmbG9hdDY0CAoA+NNNYhBYORJA
+2022/08/19 10:08:12 > After Decoding : myMap :
+
+{
+    "hello": "world",
+    "test": [
+        1,
+        2,
+        3,
+        4
+    ],
+    "x": 4.556
 }
 ```

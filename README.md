@@ -54,6 +54,8 @@
 
 [Encoding And Decoding](#encoding-and-decoding)
 
+[HTTP File Upload Client And Server](#http-file-upload-client-and-server)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -3272,4 +3274,215 @@ func main() {
     ],
     "x": 4.556
 }
+```
+
+#### [HTTP File Upload Client And Server](#http-file-upload-client-and-server)
+
+How To Run `Server` (Assuming Client/Server Is On 'localhost')
+
+```bash
+go run main.go -destination_directory="/var/www/html/files"
+```
+
+How To Run `Client` (Assuming Client/Server Is On 'localhost')
+
+```bash
+go run main.go -file="random-file.txt" -upload_url="http://localhost:1234/upload"
+```
+
+`Server` (main.go)
+
+```go
+package main
+
+import (
+    "flag"
+    "fmt"
+    "io/ioutil"
+    "log"
+    "net/http"
+)
+
+var DestinationDir string
+
+func uploadFile(w http.ResponseWriter, r *http.Request) {
+    log.Println("File Upload Endpoint Hit")
+
+    // Parse our multipart form, 10 << 20 specifies a maximum -> upload of 10 MB files.
+
+    // 314572800 = 300MB
+    err := r.ParseMultipartForm(314572800)
+    if err != nil {
+        log.Printf("error in parsing of multipart-form : %v", err.Error())
+        return
+    }
+
+    // FormFile returns the first file for the given key `myFile`
+    // it also returns the FileHeader so that we can get the Filename,
+    // the Header and the size of the file
+    file, handler, err := r.FormFile("myFile")
+    if err != nil {
+        log.Printf("Error Retrieving the form file (expecting 'myFile') : %v", err.Error())
+        return
+    }
+    defer func() {
+        _ = file.Close()
+    }()
+    log.Printf("Uploaded File : %+v\n", handler.Filename)
+    log.Printf("File Size     : %+v\n", handler.Size)
+    log.Printf("MIME Header   : %+v\n", handler.Header)
+
+    // read all the contents of our uploaded file into a
+    // byte array
+    fileBytes, err := ioutil.ReadAll(file)
+    if err != nil {
+        log.Printf("Error in reading the file : %v", err.Error())
+        return
+    }
+
+    targetFile := DestinationDir + "/" + handler.Filename
+
+    log.Printf("targetFile : (%v)", targetFile)
+
+    err = ioutil.WriteFile(targetFile, fileBytes, 0644)
+    if err != nil {
+        log.Printf("could not write file (%v) : %v", targetFile, err.Error())
+        return
+    }
+
+    log.Printf("File saved to : (%v)", targetFile)
+
+    // return that we have successfully uploaded our file!
+    _, _ = fmt.Fprintf(w, "Successfully Uploaded File\n")
+
+}
+
+func setupRoutesAndListen() {
+    http.HandleFunc("/upload", uploadFile)
+    err := http.ListenAndServe(":1234", nil)
+    if err != nil {
+        log.Printf("Error in starting the http server  : %v", err.Error())
+        return
+    }
+}
+
+func main() {
+    DestinationDir = "/tmp"
+    destinationDirPtr := flag.String("destination_directory", "/tmp", "destination folder where files would be uploaded")
+    flag.Parse()
+
+    DestinationDir = *destinationDirPtr
+
+    if DestinationDir == "" {
+        log.Printf("please provide destination directory where files would be uploaded/written. Ex: -destination_directory='/tmp'")
+        return
+    }
+    log.Println("Welcome To HTTP File Upload Server.")
+    setupRoutesAndListen()
+}
+```
+
+`Client` (main.go)
+
+```go
+package main
+
+import (
+    "bytes"
+    "flag"
+    "io"
+    "log"
+    "mime/multipart"
+    "net/http"
+    "os"
+    "path/filepath"
+)
+
+func main() {
+
+    filePathPtr := flag.String("file", "/tmp/foo.txt", "file to upload")
+    uploadURLPtr := flag.String("upload_url", "http://localhost:1234/upload", "url for uploading the file")
+
+    flag.Parse()
+
+    filePath := *filePathPtr
+    uploadURL := *uploadURLPtr
+
+    if filePath == "" {
+        log.Printf("please provide valid file,  Ex: -file='/tmp/random.txt'")
+        return
+    }
+
+    if uploadURL == "" {
+        log.Printf("please provide valid upload URL, Ex: -upload_url='http://localhost:1234/upload'")
+        return
+    }
+
+    file, err := os.Open(filePath)
+    if err != nil {
+        log.Printf("error : could not open file (%v) : %v", filePath, err.Error())
+        return
+    }
+    defer func() {
+        _ = file.Close()
+    }()
+
+    body := &bytes.Buffer{}
+    writer := multipart.NewWriter(body)
+    part, err := writer.CreateFormFile("myFile", filepath.Base(file.Name()))
+    if err != nil {
+        log.Printf("error : could not CreateFormFile for (%v) : %v", filePath, err.Error())
+        return
+    }
+    
+    _, err = io.Copy(part, file)
+    if err != nil {
+        log.Printf("could not perform an io.Copy :%v", err.Error())
+        return
+    }
+
+    _ = writer.Close()
+
+    r, err := http.NewRequest("POST", uploadURL, body)
+    if err != nil {
+        log.Printf("could not perform a http post to upload file (%v) , please check the upload URL (%v) again : %v", filePath, uploadURL, err.Error())
+        return
+    }
+    r.Header.Add("Content-Type", writer.FormDataContentType())
+    client := &http.Client{}
+    _, err = client.Do(r)
+    if err != nil {
+        log.Printf("could not perform an upload (client.Do) for the given file (%v) , please check the upload URL (%v) and file path again : %v", filePath, uploadURL, err.Error())
+        return
+    }
+}
+```
+
+Sample Run (on 'localhost' or '127.0.0.1')
+
+`Start Server`
+
+```bash
+$ go run main.go -destination_directory="/tmp"
+2022/10/12 21:05:44 Welcome To HTTP File Upload Server.
+```
+
+`Upload File Using Client`
+
+```bash
+$ go run main.go -file="random.bin" -upload_url="http://localhost:1234/upload"
+```
+
+`Logs On Server`
+
+```bash
+$ go run main.go -destination_directory="/tmp"
+2022/10/12 21:05:44 Welcome To HTTP File Upload Server.
+
+2022/10/12 21:06:18 File Upload Endpoint Hit
+2022/10/12 21:06:18 Uploaded File : random.bin
+2022/10/12 21:06:18 File Size     : 102400000
+2022/10/12 21:06:18 MIME Header   : map[Content-Disposition:[form-data; name="myFile"; filename="random.bin"] Content-Type:[application/octet-stream]]
+2022/10/12 21:06:18 targetFile : (/tmp/random.bin)
+2022/10/12 21:06:18 File saved to : (/tmp/random.bin)
 ```

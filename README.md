@@ -56,6 +56,8 @@
 
 [HTTP File Upload Client And Server](#http-file-upload-client-and-server)
 
+[Azure Resource Graph Query](#azure-resource-graph-query)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -3485,4 +3487,108 @@ $ go run main.go -destination_directory="/tmp"
 2022/10/12 21:06:18 MIME Header   : map[Content-Disposition:[form-data; name="myFile"; filename="random.bin"] Content-Type:[application/octet-stream]]
 2022/10/12 21:06:18 targetFile : (/tmp/random.bin)
 2022/10/12 21:06:18 File saved to : (/tmp/random.bin)
+```
+
+#### [Azure Resource Graph Query](#azure-resource-graph-query)
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "github.com/Azure/azure-sdk-for-go/sdk/azcore"
+    "github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
+    "github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
+    "github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+    "github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+    "github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+    "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
+    "log"
+    "os"
+)
+
+func main() {
+
+    azureTenantID := os.Getenv("AZURE_TENANT_ID")
+    if azureTenantID == "" {
+        log.Printf("ERROR : environment varilabe 'AZURE_TENANT_ID' is missing !")
+        return
+    }
+
+    azureClientID := os.Getenv("AZURE_CLIENT_ID")
+    if azureClientID == "" {
+        log.Printf("ERROR : environment varilabe 'AZURE_CLIENT_ID' is missing !")
+        return
+    }
+
+    azureClientSecret := os.Getenv("AZURE_CLIENT_SECRET")
+    if azureClientSecret == "" {
+        log.Printf("ERROR : environment varilabe 'AZURE_CLIENT_SECRET' is missing !")
+        return
+    }
+
+    cred, err := azidentity.NewClientSecretCredential(azureTenantID, azureClientID, azureClientSecret, nil)
+    if err != nil {
+        log.Fatalf("failed to obtain a credential: %v", err)
+    }
+    opts := policy.TokenRequestOptions{Scopes: []string{"https://management.core.windows.net//.default"}}
+    azToken, err := cred.GetToken(context.Background(), opts)
+    log.Printf("Token : %v", azToken.Token)
+
+    options := arm.ClientOptions{
+        ClientOptions: azcore.ClientOptions{
+            Cloud: cloud.AzurePublic,
+        },
+    }
+    client, err := armresourcegraph.NewClient(cred, &options)
+    if err != nil {
+        log.Printf("ERROR : could not create new ARM RG client : %v", err.Error())
+        return
+    }
+
+    response, err := client.Resources(context.Background(),
+        armresourcegraph.QueryRequest{
+            Query:         to.Ptr("Resources | where type =~ 'Microsoft.Compute/virtualMachines' | summarize count() by tostring(properties.storageProfile.osDisk.osType)"),
+            Subscriptions: nil,
+            //Subscriptions: []*string{to.Ptr("00000000-0000-0000-0000-000000000000")},
+        }, nil)
+    if err != nil {
+        log.Printf("ERROR : could not fetch resources using RG client : %v", err.Error())
+        return
+    }
+    responseData := response.Data
+    PrettyPrintData(responseData)
+}
+
+func PrettyPrintData(data interface{}) {
+    dataBytes, err := json.MarshalIndent(data, "", "    ")
+    if err != nil {
+        log.Printf("error : could not MarshalIndent json : %v", err.Error())
+        return
+    }
+    fmt.Printf("\n%v\n\n", string(dataBytes))
+}
+```
+
+Output
+
+```bash
+$ go run main.go
+```
+
+```bash
+2022/11/11 13:34:20 Token : <TOKEN_REDACTED>
+
+[
+    {
+        "count_": 800,
+        "properties_storageProfile_osDisk_osType": "Windows"
+    },
+    {
+        "count_": 1200,
+        "properties_storageProfile_osDisk_osType": "Linux"
+    }
+]
 ```

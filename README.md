@@ -3601,6 +3601,7 @@ package main
 import (
     "context"
     "encoding/json"
+    "errors"
     "fmt"
     "github.com/Azure/azure-sdk-for-go/sdk/azcore"
     "github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
@@ -3611,7 +3612,9 @@ import (
     "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
     "io/ioutil"
     "log"
+    "math"
     "os"
+    "sync"
     "time"
 )
 
@@ -3644,80 +3647,50 @@ func main() {
     //azToken, err := cred.GetToken(context.Background(), opts)
     //log.Printf("Token : %v", azToken.Token)
 
-    retryOptions := policy.RetryOptions{
-        MaxRetries: 100,
-        RetryDelay: 15 * time.Second,
-    }
-
-    options := arm.ClientOptions{
-        ClientOptions: azcore.ClientOptions{
-            Cloud: cloud.AzurePublic,
-            Retry: retryOptions,
-        },
-    }
-    client, err := armresourcegraph.NewClient(cred, &options)
+    totalRecords, err := GetTotalCountVirtualMachines(cred)
     if err != nil {
-        log.Printf("ERROR : could not create new ARM RG client : %v", err.Error())
+        log.Printf("ERROR : %v", err.Error())
         return
     }
 
-    response, err := client.Resources(context.Background(),
-        armresourcegraph.QueryRequest{
-            Query: to.Ptr("Resources | where type =~ 'Microsoft.Compute/virtualMachines'"),
-            //Query:         to.Ptr("Resources | where type =~ 'Microsoft.Compute/virtualMachines' | summarize count() by tostring(properties.storageProfile.osDisk.osType)"),
-            Subscriptions: nil,
-            //Subscriptions: []*string{to.Ptr("00000000-0000-0000-0000-000000000000")},
-        }, nil)
-    if err != nil {
-        log.Printf("ERROR : could not fetch resources using RG client : %v", err.Error())
-        return
-    }
+    log.Printf("Total Count of VMs : %v", totalRecords)
 
-    totalRecords := *response.TotalRecords
-    log.Printf("Total Records : %v", totalRecords)
-
-    allResources := make([]interface{}, 0)
-
-    pageStart := int32(0)
     pagesToFetch := int32(1000)
 
-    for {
-        queryRequestOptions := armresourcegraph.QueryRequestOptions{
-            Skip: &pageStart,
-            Top:  &pagesToFetch,
-        }
+    numberOfThreads := 4
+    myRanges := SplitNum(int(totalRecords), numberOfThreads)
+    fmt.Printf("myRanges : %v", myRanges)
 
-        resourceResponse, err := client.Resources(context.Background(),
-            armresourcegraph.QueryRequest{
-                Query:         to.Ptr("Resources | where type =~ 'Microsoft.Compute/virtualMachines'"),
-                Subscriptions: nil,
-                Options:       &queryRequestOptions,
-            }, nil)
-        if err != nil {
-            log.Printf("ERROR : could not fetch resources using RG client : (%v)", err.Error())
-            break
-        }
+    var wg sync.WaitGroup
 
-        resourceDataList := resourceResponse.Data.([]interface{})
+    finalResults := make(map[int][]interface{})
 
-        for _, data := range resourceDataList {
-            allResources = append(allResources, data)
-        }
-
-        log.Printf("Total Records Fetched So Far : (%v) ...", len(allResources))
-
-        pageStart = pageStart + pagesToFetch
-
-        if int64(pageStart) >= totalRecords {
-            break
-        }
-
+    for index, data := range myRanges {
+        wg.Add(1)
+        go func(wg *sync.WaitGroup, indexValue int, myData Range) {
+            defer wg.Done()
+            start := myData.Start
+            end := myData.End
+            records, err := GetVMRecordsFromStardToEnd(start, end, pagesToFetch, cred)
+            if err != nil {
+                log.Printf("OOPS : main() : %v", err.Error())
+                return
+            }
+            finalResults[indexValue] = records
+        }(&wg, index, data)
     }
 
-    WriteInterfaceToFile("azure_data.json", allResources)
-    
-    //responseData := response.Data
-    //PrettyPrintData(responseData)
+    wg.Wait()
+
+    allRecords := make([]interface{}, 0)
+
+    for _, results := range finalResults {
+        for _, data := range results {
+            allRecords = append(allRecords, data)
+        }
+    }
+
+    WriteInterfaceToFile("azure_data.json", allRecords)
 }
 
 func PrettyPrintData(data interface{}) {
@@ -3732,5 +3705,165 @@ func PrettyPrintData(data interface{}) {
 func WriteInterfaceToFile(fileName string, data interface{}) {
     file, _ := json.MarshalIndent(data, "", " ")
     _ = ioutil.WriteFile(fileName, file, 0644)
+}
+
+func GetVMRecordsFromStardToEnd(start int32, end int32, pagesToFetch int32, cred *azidentity.ClientSecretCredential) ([]interface{}, error) {
+    message := ""
+    allResources := make([]interface{}, 0)
+    for x := start; x <= end; x += pagesToFetch {
+        records, err := GetVMRecords(x, pagesToFetch, cred)
+        if err != nil {
+            message = fmt.Sprintf("OOPS : func GetVMRecordsFromStardToEnd() : (ERROR) : %v", err.Error())
+            return nil, errors.New(message)
+        }
+        for _, data := range records {
+            allResources = append(allResources, data)
+        }
+        log.Printf("func GetVMRecordsFromStardToEnd() : len(allResources) : %v", len(allResources))
+    }
+    return allResources, nil
+}
+
+func GetVMRecords(pageStart int32, pagesToFetch int32, cred *azidentity.ClientSecretCredential) ([]interface{}, error) {
+    message := ""
+
+    retryOptions := policy.RetryOptions{
+        MaxRetries: 100,
+        RetryDelay: 15 * time.Second,
+    }
+
+    options := arm.ClientOptions{
+        ClientOptions: azcore.ClientOptions{
+            Cloud: cloud.AzurePublic,
+            Retry: retryOptions,
+        },
+    }
+
+    client, err := armresourcegraph.NewClient(cred, &options)
+    if err != nil {
+        message = fmt.Sprintf("ERROR : could not create new ARM RG client : %v", err.Error())
+        return nil, errors.New(message)
+    }
+
+    allResources := make([]interface{}, 0)
+
+    queryRequestOptions := armresourcegraph.QueryRequestOptions{
+        Skip: &pageStart,
+        Top:  &pagesToFetch,
+    }
+
+    resourceResponse, err := client.Resources(context.Background(),
+        armresourcegraph.QueryRequest{
+            Query:         to.Ptr("Resources | where type =~ 'Microsoft.Compute/virtualMachines'"),
+            Subscriptions: nil,
+            Options:       &queryRequestOptions,
+        }, nil)
+    if err != nil {
+        message = fmt.Sprintf("ERROR : could not fetch resources using RG client : (%v)", err.Error())
+        return nil, errors.New(message)
+    }
+
+    resourceDataList := resourceResponse.Data.([]interface{})
+
+    for _, data := range resourceDataList {
+        allResources = append(allResources, data)
+    }
+
+    log.Printf("func GetVMRecords() : pageStart : %v , pagesToFetch : %v, records-fetched : %v", pageStart, pagesToFetch, len(allResources))
+
+    return resourceDataList, nil
+}
+
+func GetTotalCountVirtualMachines(cred *azidentity.ClientSecretCredential) (float64, error) {
+    msg := ""
+    retryOptions := policy.RetryOptions{
+        MaxRetries: 100,
+        RetryDelay: 15 * time.Second,
+    }
+
+    options := arm.ClientOptions{
+        ClientOptions: azcore.ClientOptions{
+            Cloud: cloud.AzurePublic,
+            Retry: retryOptions,
+        },
+    }
+    client, err := armresourcegraph.NewClient(cred, &options)
+    if err != nil {
+        msg = fmt.Sprintf("ERROR : could not create new ARM RG client : %v", err.Error())
+        return 0, errors.New(msg)
+    }
+
+    response, err := client.Resources(context.Background(),
+        armresourcegraph.QueryRequest{
+            Query:         to.Ptr("Resources | where type == 'microsoft.compute/virtualmachines' | summarize count()"),
+            Subscriptions: nil,
+        }, nil)
+    if err != nil {
+        log.Printf("ERROR : could not exec resource graph query : %v", err.Error())
+        return 0, err
+    }
+    log.Printf("GetTotalCountVirtualMachines() : Total Count of VMs >")
+    //PrettyPrintData(response.Data)
+    data := response.Data
+    records := data.([]interface{})
+    if len(records) == 0 {
+        return 0, errors.New("func GetTotalCountVirtualMachines() : number of records is ZERO")
+    }
+    firstRecord := records[0]
+    recordMap, ok := firstRecord.(map[string]interface{})
+    if !ok {
+        return 0, errors.New("func GetTotalCountVirtualMachines() : firstRecord is NOT a map[string]interface{}")
+    }
+    totalCountResult, ok := recordMap["count_"]
+    if !ok {
+        return 0, errors.New("func GetTotalCountVirtualMachines() : recordMap['count_'] does not exist")
+    }
+    totalCount := totalCountResult.(float64)
+    return totalCount, nil
+}
+
+type Range struct {
+    Start int32
+    End   int32
+}
+
+func SplitNum(myNumber int, chunks int) []Range {
+
+    average := int(math.Floor(float64(myNumber) / float64(chunks)))
+
+    fmt.Printf("\n average : %v \n", average)
+
+    reminder := myNumber % int(math.Floor(float64(average)))
+
+    fmt.Printf("\n reminder : %v \n", reminder)
+
+    finalRange := make([]Range, 0)
+
+    var start int32
+    var end int32
+
+    for x := 0; x < chunks; x++ {
+        if x == 0 {
+            start = int32(0)
+        } else {
+            start = int32(x * average)
+        }
+
+        if x == chunks-1 {
+            end = int32(myNumber - 1)
+        } else {
+            end = int32((x * average) + (average - 1))
+        }
+
+        myRange := Range{
+            Start: start,
+            End:   end,
+        }
+        finalRange = append(finalRange, myRange)
+    }
+
+    log.Printf("func : SplitNum(myNumber : %v, chunks : %v) -> finalRange -> %v", myNumber, chunks, finalRange)
+
+    return finalRange
 }
 ```

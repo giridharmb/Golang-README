@@ -3592,3 +3592,145 @@ $ go run main.go
     }
 ]
 ```
+
+#### Using `Azure Resource Graph Query` , Fetch All Virtual Machines
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "github.com/Azure/azure-sdk-for-go/sdk/azcore"
+    "github.com/Azure/azure-sdk-for-go/sdk/azcore/arm"
+    "github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
+    "github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+    "github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+    "github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+    "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
+    "io/ioutil"
+    "log"
+    "os"
+    "time"
+)
+
+func main() {
+
+    azureTenantID := os.Getenv("AZURE_TENANT_ID")
+    if azureTenantID == "" {
+        log.Printf("ERROR : environment varilabe 'AZURE_TENANT_ID' is missing !")
+        return
+    }
+
+    azureClientID := os.Getenv("AZURE_CLIENT_ID")
+    if azureClientID == "" {
+        log.Printf("ERROR : environment varilabe 'AZURE_CLIENT_ID' is missing !")
+        return
+    }
+
+    azureClientSecret := os.Getenv("AZURE_CLIENT_SECRET")
+    if azureClientSecret == "" {
+        log.Printf("ERROR : environment varilabe 'AZURE_CLIENT_SECRET' is missing !")
+        return
+    }
+
+    cred, err := azidentity.NewClientSecretCredential(azureTenantID, azureClientID, azureClientSecret, nil)
+    if err != nil {
+        log.Fatalf("failed to obtain a credential: %v", err)
+        return
+    }
+    //opts := policy.TokenRequestOptions{Scopes: []string{"https://management.core.windows.net//.default"}}
+    //azToken, err := cred.GetToken(context.Background(), opts)
+    //log.Printf("Token : %v", azToken.Token)
+
+    retryOptions := policy.RetryOptions{
+        MaxRetries: 100,
+        RetryDelay: 15 * time.Second,
+    }
+
+    options := arm.ClientOptions{
+        ClientOptions: azcore.ClientOptions{
+            Cloud: cloud.AzurePublic,
+            Retry: retryOptions,
+        },
+    }
+    client, err := armresourcegraph.NewClient(cred, &options)
+    if err != nil {
+        log.Printf("ERROR : could not create new ARM RG client : %v", err.Error())
+        return
+    }
+
+    response, err := client.Resources(context.Background(),
+        armresourcegraph.QueryRequest{
+            Query: to.Ptr("Resources | where type =~ 'Microsoft.Compute/virtualMachines'"),
+            //Query:         to.Ptr("Resources | where type =~ 'Microsoft.Compute/virtualMachines' | summarize count() by tostring(properties.storageProfile.osDisk.osType)"),
+            Subscriptions: nil,
+            //Subscriptions: []*string{to.Ptr("00000000-0000-0000-0000-000000000000")},
+        }, nil)
+    if err != nil {
+        log.Printf("ERROR : could not fetch resources using RG client : %v", err.Error())
+        return
+    }
+
+    totalRecords := *response.TotalRecords
+    log.Printf("Total Records : %v", totalRecords)
+
+    allResources := make([]interface{}, 0)
+
+    pageStart := int32(0)
+    pagesToFetch := int32(1000)
+
+    for {
+        queryRequestOptions := armresourcegraph.QueryRequestOptions{
+            Skip: &pageStart,
+            Top:  &pagesToFetch,
+        }
+
+        resourceResponse, err := client.Resources(context.Background(),
+            armresourcegraph.QueryRequest{
+                Query:         to.Ptr("Resources | where type =~ 'Microsoft.Compute/virtualMachines'"),
+                Subscriptions: nil,
+                Options:       &queryRequestOptions,
+            }, nil)
+        if err != nil {
+            log.Printf("ERROR : could not fetch resources using RG client : (%v)", err.Error())
+            break
+        }
+
+        resourceDataList := resourceResponse.Data.([]interface{})
+
+        for _, data := range resourceDataList {
+            allResources = append(allResources, data)
+        }
+
+        log.Printf("Total Records Fetched So Far : (%v) ...", len(allResources))
+
+        pageStart = pageStart + pagesToFetch
+
+        if int64(pageStart) >= totalRecords {
+            break
+        }
+
+    }
+
+    WriteInterfaceToFile("azure_data.json", allResources)
+    
+    //responseData := response.Data
+    //PrettyPrintData(responseData)
+}
+
+func PrettyPrintData(data interface{}) {
+    dataBytes, err := json.MarshalIndent(data, "", "    ")
+    if err != nil {
+        log.Printf("error : could not MarshalIndent json : %v", err.Error())
+        return
+    }
+    fmt.Printf("\n%v\n\n", string(dataBytes))
+}
+
+func WriteInterfaceToFile(fileName string, data interface{}) {
+    file, _ := json.MarshalIndent(data, "", " ")
+    _ = ioutil.WriteFile(fileName, file, 0644)
+}
+```

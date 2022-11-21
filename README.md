@@ -62,6 +62,8 @@
 
 [Worker Pool V2](#worker-pool-v2)
 
+[Worker Pool V3](#worker-pool-v3)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -4179,4 +4181,180 @@ go run main.go
 2022/11/21 12:03:57 Hash of data : 298923c8190045e91288b430794814c4
 2022/11/21 12:03:57 Hash of data : 03e0704b5690a2dee1861dc3ad3316c9
 2022/11/21 12:03:57 Hash of data : ef50c335cca9f340bde656363ebd02fd
+```
+
+#### [Worker Pool V3](#worker-pool-v3)
+
+```go
+package main
+
+import (
+    "crypto/md5"
+    "encoding/hex"
+    "fmt"
+    "log"
+    "time"
+)
+
+/* ******************************** Core Data Structures ***************************************** */
+/* Change this dependng on what is your input/output */
+
+type Input struct {
+    Data int
+}
+
+type Output struct {
+    HashValue string
+}
+
+/* ******************************** Worker Pools ***************************************** */
+
+type InputGenerator func() []Input
+
+type PoolWorkerData struct {
+    Input
+    Output
+    MaxWorkers int
+    IGen       InputGenerator
+}
+
+type PoolWorkerInterface interface {
+    ExecutePoolWorkerJobs() []Output
+}
+
+func (d PoolWorkerData) ExecutePoolWorkerJobs() []Output {
+    jobs := make(chan Input, 1)
+    results := make(chan Output, 1)
+
+    resultsList := make([]Output, 0)
+    maxNumberOfWorkers := d.MaxWorkers
+    inputList := d.IGen()
+    log.Printf("Done generating input list.")
+
+    waitChannel := make(chan struct{})
+
+    wp := WorkProcessor{
+        JobsChannel:       jobs,
+        ResultsChannel:    results,
+        FuncDataProcessor: GetMD5Hash,
+    }
+
+    de := DataExtractor{
+        InputList:      inputList,
+        JobsChannel:    jobs,
+        ResultsChannel: results,
+        WaitChannel:    waitChannel,
+    }
+
+    for w := 1; w <= maxNumberOfWorkers; w++ {
+        go wp.PoolWorker()
+    }
+
+    resultsList = de.ExtractAllData()
+
+    return resultsList
+}
+
+/* ******************************** Data Extractor ***************************************** */
+
+type DataExtractor struct {
+    InputList      []Input
+    JobsChannel    chan Input
+    ResultsChannel chan Output
+    WaitChannel    chan struct{}
+}
+
+type DataExtractorInterface interface {
+    ExtractAllData() []Output
+}
+
+func (de DataExtractor) ExtractAllData() []Output {
+    resultsList := make([]Output, 0)
+    go func() {
+        for _, job := range de.InputList {
+            de.JobsChannel <- job
+        }
+        close(de.JobsChannel)
+    }()
+
+    go func() {
+        for i := 0; i < len(de.InputList); i++ {
+            result := <-de.ResultsChannel
+            resultsList = append(resultsList, result)
+        }
+        close(de.WaitChannel)
+    }()
+    <-de.WaitChannel
+    return resultsList
+}
+
+/* ******************************** Work Processor ***************************************** */
+
+type DataProcessor func(data interface{}) interface{}
+
+type WorkProcessor struct {
+    JobsChannel       chan Input
+    ResultsChannel    chan Output
+    FuncDataProcessor DataProcessor
+}
+
+type WorkProcessorInterface interface {
+    PoolWorker()
+}
+
+func (wp WorkProcessor) PoolWorker() {
+    for {
+        job, ok := <-wp.JobsChannel
+        if !ok {
+            break
+        }
+        myInput := job.Data
+        myResult := wp.FuncDataProcessor(myInput)
+        log.Printf("PoolWorker() : myInput => %v , myResult => %v", myInput, myResult)
+        myOutput := Output{HashValue: myResult.(string)}
+        wp.ResultsChannel <- myOutput
+    }
+}
+
+/* ******************************** main() ***************************************** */
+
+func main() {
+
+    poolWorkerData := PoolWorkerData{
+        Input:      Input{},
+        Output:     Output{},
+        MaxWorkers: 3,
+        IGen:       GenerateInputs,
+    }
+
+    hashList := poolWorkerData.ExecutePoolWorkerJobs()
+
+    // print the results
+
+    log.Printf("Total Results : %v", len(hashList))
+    for _, data := range hashList {
+        log.Printf("Hash of data : %v", data.HashValue)
+    }
+}
+
+/* ******************************** Helper Functions ***************************************** */
+
+func GenerateInputs() []Input {
+    log.Printf("$$ GenerateInputs()...")
+    myDataList := make([]Input, 0)
+    for i := 1000; i < 1020; i++ {
+        myData := Input{Data: i}
+        myDataList = append(myDataList, myData)
+    }
+    return myDataList
+}
+
+func GetMD5Hash(data interface{}) interface{} {
+    text := fmt.Sprintf("%v", data)
+    time.Sleep(2 * time.Second)
+    hasher := md5.New()
+    hasher.Write([]byte(text))
+    md5Value := hex.EncodeToString(hasher.Sum(nil))
+    return md5Value
+}
 ```

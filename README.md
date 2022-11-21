@@ -60,6 +60,8 @@
 
 [Worker Pools](#worker-pools)
 
+[Worker Pool V2](#worker-pool-v2)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -3985,4 +3987,196 @@ $ go run main.go
 ...
 ...
 <truncated>
+```
+
+#### [Worker Pool V2](#worker-pool-v2)
+
+```go
+package main
+
+import (
+    "crypto/md5"
+    "encoding/hex"
+    "fmt"
+    "log"
+    "time"
+)
+
+type Input struct {
+    Data int
+}
+
+type Output struct {
+    HashValue string
+}
+
+type InputGenerator func() []Input
+
+type PoolWorkerData struct {
+    Input
+    Output
+    MaxWorkers int
+    IGen       InputGenerator
+}
+
+type PoolWorkerInterface interface {
+    ExecutePoolWorkerJobs() []Output
+}
+
+func (d PoolWorkerData) ExecutePoolWorkerJobs() []Output {
+    jobs := make(chan Input, 1)
+    results := make(chan Output, 1)
+
+    resultsList := make([]Output, 0)
+    maxNumberOfWorkers := d.MaxWorkers
+    inputList := d.IGen()
+    log.Printf("Done generating input list.")
+    waitChannel := make(chan struct{})
+
+    wp := WorkProcessor{
+        JobsChannel:    jobs,
+        ResultsChannel: results,
+        FDProcessor:    GetMD5Hash,
+    }
+
+    for w := 1; w <= maxNumberOfWorkers; w++ {
+        go wp.WorkerV1()
+    }
+
+    go func() {
+        for _, job := range inputList {
+            jobs <- job
+        }
+        close(jobs)
+    }()
+
+    go func() {
+        for i := 0; i < len(inputList); i++ {
+            result := <-results
+            resultsList = append(resultsList, result)
+        }
+        close(waitChannel)
+    }()
+
+    <-waitChannel
+
+    return resultsList
+}
+
+/*
+FetchInputs ...
+*/
+func FetchInputs() []Input {
+    myUUIDList := make([]Input, 0)
+    for i := 1000; i < 1020; i++ {
+        myData := Input{Data: i}
+        myUUIDList = append(myUUIDList, myData)
+    }
+    return myUUIDList
+}
+
+type DataProcessor func(data int) string
+
+type WorkProcessor struct {
+    JobsChannel    chan Input
+    ResultsChannel chan Output
+    FDProcessor    DataProcessor
+}
+
+type WorkProcessorInterface interface {
+    WorkerV1()
+}
+
+func (wp WorkProcessor) WorkerV1() {
+    for {
+        job, ok := <-wp.JobsChannel
+        if !ok {
+            break
+        }
+        myInput := job.Data
+        myResult := wp.FDProcessor(myInput)
+        log.Printf("WorkerV1() : myInput => %v , myResult => %v", myInput, myResult)
+        myOutput := Output{HashValue: myResult}
+        wp.ResultsChannel <- myOutput
+    }
+}
+
+func main() {
+
+    poolWorkerData := PoolWorkerData{
+        Input:      Input{},
+        Output:     Output{},
+        MaxWorkers: 3,
+        IGen:       FetchInputs,
+    }
+
+    hashList := poolWorkerData.ExecutePoolWorkerJobs()
+
+    // print the results
+
+    log.Printf("Total Results : %v", len(hashList))
+    for _, data := range hashList {
+        log.Printf("Hash of data : %v", data.HashValue)
+    }
+}
+
+func GetMD5Hash(data int) string {
+    text := fmt.Sprintf("%v", data)
+    time.Sleep(2 * time.Second)
+    hasher := md5.New()
+    hasher.Write([]byte(text))
+    md5Value := hex.EncodeToString(hasher.Sum(nil))
+    return md5Value
+}
+```
+
+Output
+
+```bash
+go run main.go
+```
+
+```
+2022/11/21 12:03:43 Done generating input list.
+2022/11/21 12:03:45 WorkerV1() : myInput => 1002 , myResult => fba9d88164f3e2d9109ee770223212a0
+2022/11/21 12:03:45 WorkerV1() : myInput => 1001 , myResult => b8c37e33defde51cf91e1e03e51657da
+2022/11/21 12:03:45 WorkerV1() : myInput => 1000 , myResult => a9b7ba70783b617e9998dc4dd82eb3c5
+2022/11/21 12:03:47 WorkerV1() : myInput => 1004 , myResult => fed33392d3a48aa149a87a38b875ba4a
+2022/11/21 12:03:47 WorkerV1() : myInput => 1005 , myResult => 2387337ba1e0b0249ba90f55b2ba2521
+2022/11/21 12:03:47 WorkerV1() : myInput => 1003 , myResult => aa68c75c4a77c87f97fb686b2f068676
+2022/11/21 12:03:49 WorkerV1() : myInput => 1006 , myResult => 9246444d94f081e3549803b928260f56
+2022/11/21 12:03:49 WorkerV1() : myInput => 1008 , myResult => 1587965fb4d4b5afe8428a4a024feb0d
+2022/11/21 12:03:49 WorkerV1() : myInput => 1007 , myResult => d7322ed717dedf1eb4e6e52a37ea7bcd
+2022/11/21 12:03:51 WorkerV1() : myInput => 1009 , myResult => 31b3b31a1c2f8a370206f111127c0dbd
+2022/11/21 12:03:51 WorkerV1() : myInput => 1011 , myResult => 7f975a56c761db6506eca0b37ce6ec87
+2022/11/21 12:03:51 WorkerV1() : myInput => 1010 , myResult => 1e48c4420b7073bc11916c6c1de226bb
+2022/11/21 12:03:53 WorkerV1() : myInput => 1012 , myResult => f33ba15effa5c10e873bf3842afb46a6
+2022/11/21 12:03:53 WorkerV1() : myInput => 1014 , myResult => 766d856ef1a6b02f93d894415e6bfa0e
+2022/11/21 12:03:53 WorkerV1() : myInput => 1013 , myResult => 6b180037abbebea991d8b1232f8a8ca9
+2022/11/21 12:03:55 WorkerV1() : myInput => 1017 , myResult => 5d616dd38211ebb5d6ec52986674b6e4
+2022/11/21 12:03:55 WorkerV1() : myInput => 1016 , myResult => 08fe2621d8e716b02ec0da35256a998d
+2022/11/21 12:03:55 WorkerV1() : myInput => 1015 , myResult => 298923c8190045e91288b430794814c4
+2022/11/21 12:03:57 WorkerV1() : myInput => 1019 , myResult => 03e0704b5690a2dee1861dc3ad3316c9
+2022/11/21 12:03:57 WorkerV1() : myInput => 1018 , myResult => ef50c335cca9f340bde656363ebd02fd
+2022/11/21 12:03:57 Total Results : 20
+2022/11/21 12:03:57 Hash of data : fba9d88164f3e2d9109ee770223212a0
+2022/11/21 12:03:57 Hash of data : b8c37e33defde51cf91e1e03e51657da
+2022/11/21 12:03:57 Hash of data : a9b7ba70783b617e9998dc4dd82eb3c5
+2022/11/21 12:03:57 Hash of data : fed33392d3a48aa149a87a38b875ba4a
+2022/11/21 12:03:57 Hash of data : 2387337ba1e0b0249ba90f55b2ba2521
+2022/11/21 12:03:57 Hash of data : aa68c75c4a77c87f97fb686b2f068676
+2022/11/21 12:03:57 Hash of data : 9246444d94f081e3549803b928260f56
+2022/11/21 12:03:57 Hash of data : 1587965fb4d4b5afe8428a4a024feb0d
+2022/11/21 12:03:57 Hash of data : d7322ed717dedf1eb4e6e52a37ea7bcd
+2022/11/21 12:03:57 Hash of data : 31b3b31a1c2f8a370206f111127c0dbd
+2022/11/21 12:03:57 Hash of data : 7f975a56c761db6506eca0b37ce6ec87
+2022/11/21 12:03:57 Hash of data : 1e48c4420b7073bc11916c6c1de226bb
+2022/11/21 12:03:57 Hash of data : f33ba15effa5c10e873bf3842afb46a6
+2022/11/21 12:03:57 Hash of data : 766d856ef1a6b02f93d894415e6bfa0e
+2022/11/21 12:03:57 Hash of data : 6b180037abbebea991d8b1232f8a8ca9
+2022/11/21 12:03:57 Hash of data : 5d616dd38211ebb5d6ec52986674b6e4
+2022/11/21 12:03:57 Hash of data : 08fe2621d8e716b02ec0da35256a998d
+2022/11/21 12:03:57 Hash of data : 298923c8190045e91288b430794814c4
+2022/11/21 12:03:57 Hash of data : 03e0704b5690a2dee1861dc3ad3316c9
+2022/11/21 12:03:57 Hash of data : ef50c335cca9f340bde656363ebd02fd
 ```

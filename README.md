@@ -58,6 +58,8 @@
 
 [Azure Resource Graph Query](#azure-resource-graph-query)
 
+[Worker Pools](#worker-pools)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -3866,4 +3868,121 @@ func SplitNum(myNumber int, chunks int) []Range {
 
     return finalRange
 }
+```
+
+#### [Worker Pools](#worker-pools)
+
+```go
+package main
+
+import (
+    "crypto/md5"
+    "encoding/hex"
+    "fmt"
+    "log"
+    "time"
+)
+
+type Input struct {
+    Data int
+}
+
+type Output struct {
+    HashValue string
+}
+
+func GenerateInputs() []Input {
+    myUUIDList := make([]Input, 0)
+    for i := 1000; i < 1100; i++ {
+        myData := Input{Data: i}
+        myUUIDList = append(myUUIDList, myData)
+    }
+    return myUUIDList
+}
+
+func ExecuteWorkerPoolJobs() []Output {
+    jobs := make(chan Input, 1)
+    results := make(chan Output, 1)
+    resultList := make([]Output, 0)
+    maxNumberOfWorkers := 3
+
+    uuidList := GenerateInputs()
+
+    log.Printf("Done generating UUID List of Inputs.")
+
+    waitChannel := make(chan struct{})
+
+    for w := 1; w <= maxNumberOfWorkers; w++ {
+        go Worker(jobs, results)
+    }
+
+    go func() {
+        for _, uuid := range uuidList {
+            jobs <- uuid
+        }
+        close(jobs)
+    }()
+
+    go func() {
+        for i := 0; i < len(uuidList); i++ {
+            result := <-results
+            resultList = append(resultList, result)
+        }
+        close(waitChannel)
+    }()
+
+    <-waitChannel
+
+    return resultList
+}
+
+func Worker(jobs <-chan Input, results chan<- Output) {
+    counter := 1
+    for {
+        job, ok := <-jobs
+        if !ok {
+            break
+        }
+        dataStr := fmt.Sprintf("%v", job.Data)
+        hash := GetMD5HashForString(dataStr)
+        log.Printf("(%v) : hashWorker : job => %v , hash => %v", counter, job, hash)
+        counter++
+        output := Output{HashValue: hash}
+        results <- output
+    }
+}
+
+func main() {
+    hashList := ExecuteWorkerPoolJobs()
+    log.Printf("Total Length of output : %v", len(hashList))
+    for _, data := range hashList {
+        log.Printf("Hash of data : %v", data.HashValue)
+    }
+}
+
+func GetMD5HashForString(text string) string {
+    time.Sleep(2 * time.Second)
+    hasher := md5.New()
+    hasher.Write([]byte(text))
+    md5Value := hex.EncodeToString(hasher.Sum(nil))
+    return md5Value
+}
+```
+
+Output
+
+```bash
+$ go run main.go
+2022/11/20 19:26:33 Done generating UUID List of Inputs.
+2022/11/20 19:26:35 (1) : hashWorker : job => {1000} , hash => a9b7ba70783b617e9998dc4dd82eb3c5
+2022/11/20 19:26:35 (1) : hashWorker : job => {1001} , hash => b8c37e33defde51cf91e1e03e51657da
+2022/11/20 19:26:35 (1) : hashWorker : job => {1002} , hash => fba9d88164f3e2d9109ee770223212a0
+2022/11/20 19:26:37 (2) : hashWorker : job => {1005} , hash => 2387337ba1e0b0249ba90f55b2ba2521
+2022/11/20 19:26:37 (2) : hashWorker : job => {1003} , hash => aa68c75c4a77c87f97fb686b2f068676
+2022/11/20 19:26:37 (2) : hashWorker : job => {1004} , hash => fed33392d3a48aa149a87a38b875ba4a
+2022/11/20 19:26:39 (3) : hashWorker : job => {1007} , hash => d7322ed717dedf1eb4e6e52a37ea7bcd
+2022/11/20 19:26:39 (3) : hashWorker : job => {1008} , hash => 1587965fb4d4b5afe8428a4a024feb0d
+...
+...
+<truncated>
 ```

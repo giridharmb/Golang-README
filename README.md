@@ -4067,15 +4067,15 @@ func (d PoolWorkerData) ExecutePoolWorkerJobs() []Output {
 FetchInputs ...
 */
 func FetchInputs() []Input {
-    myUUIDList := make([]Input, 0)
+    myDataList := make([]Input, 0)
     for i := 1000; i < 1020; i++ {
         myData := Input{Data: i}
-        myUUIDList = append(myUUIDList, myData)
+        myDataList = append(myDataList, myData)
     }
-    return myUUIDList
+    return myDataList
 }
 
-type DataProcessor func(data int) string
+type DataProcessor func(data interface{}) interface{}
 
 type WorkProcessor struct {
     JobsChannel    chan Input
@@ -4096,7 +4096,7 @@ func (wp WorkProcessor) WorkerV1() {
         myInput := job.Data
         myResult := wp.FDProcessor(myInput)
         log.Printf("WorkerV1() : myInput => %v , myResult => %v", myInput, myResult)
-        myOutput := Output{HashValue: myResult}
+        myOutput := Output{HashValue: myResult.(string)}
         wp.ResultsChannel <- myOutput
     }
 }
@@ -4120,7 +4120,7 @@ func main() {
     }
 }
 
-func GetMD5Hash(data int) string {
+func GetMD5Hash(data interface{}) interface{} {
     text := fmt.Sprintf("%v", data)
     time.Sleep(2 * time.Second)
     hasher := md5.New()

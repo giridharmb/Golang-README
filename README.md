@@ -4226,9 +4226,12 @@ func (d PoolWorkerData) ExecutePoolWorkerJobs() []Output {
     jobs := make(chan Input, 1)
     results := make(chan Output, 1)
 
-    resultsList := make([]Output, 0)
+    resultsList := make([]Output, 0) // return this at the end of the function
+
     maxNumberOfWorkers := d.MaxWorkers
-    inputList := d.IGen()
+
+    inputList := d.IGen() // generate inputs
+
     log.Printf("Done generating input list.")
 
     waitChannel := make(chan struct{})
@@ -4239,12 +4242,18 @@ func (d PoolWorkerData) ExecutePoolWorkerJobs() []Output {
         FuncDataProcessor: GetMD5Hash,
     }
 
-    de := DataExtractor{
-        InputList:      inputList,
-        JobsChannel:    jobs,
-        ResultsChannel: results,
-        WaitChannel:    waitChannel,
+    df := DataFeeder{
+        InputList:   inputList,
+        JobsChannel: jobs,
     }
+
+    de := DataExtractor{
+        TotalInputLength: len(inputList),
+        ResultsChannel:   results,
+        WaitChannel:      waitChannel,
+    }
+
+    df.FeedDataIntoChannel()
 
     for w := 1; w <= maxNumberOfWorkers; w++ {
         go wp.PoolWorker()
@@ -4258,27 +4267,38 @@ func (d PoolWorkerData) ExecutePoolWorkerJobs() []Output {
 /* ******************************** Data Extractor ***************************************** */
 
 type DataExtractor struct {
-    InputList      []Input
-    JobsChannel    chan Input
-    ResultsChannel chan Output
-    WaitChannel    chan struct{}
+    TotalInputLength int
+    ResultsChannel   chan Output
+    WaitChannel      chan struct{}
+}
+
+type DataFeeder struct {
+    InputList   []Input
+    JobsChannel chan Input
 }
 
 type DataExtractorInterface interface {
     ExtractAllData() []Output
 }
 
+type DataFeederInterface interface {
+    FeedDataIntoChannel()
+}
+
+func (df DataFeeder) FeedDataIntoChannel() {
+    go func() {
+        for _, job := range df.InputList {
+            df.JobsChannel <- job
+        }
+        close(df.JobsChannel)
+    }()
+}
+
 func (de DataExtractor) ExtractAllData() []Output {
     resultsList := make([]Output, 0)
-    go func() {
-        for _, job := range de.InputList {
-            de.JobsChannel <- job
-        }
-        close(de.JobsChannel)
-    }()
 
     go func() {
-        for i := 0; i < len(de.InputList); i++ {
+        for i := 0; i < de.TotalInputLength; i++ {
             result := <-de.ResultsChannel
             resultsList = append(resultsList, result)
         }
@@ -4327,12 +4347,12 @@ func main() {
         IGen:       GenerateInputs,
     }
 
-    hashList := poolWorkerData.ExecutePoolWorkerJobs()
+    resultList := poolWorkerData.ExecutePoolWorkerJobs()
 
     // print the results
 
-    log.Printf("Total Results : %v", len(hashList))
-    for _, data := range hashList {
+    log.Printf("Total Results : %v", len(resultList))
+    for _, data := range resultList {
         log.Printf("Hash of data : %v", data.HashValue)
     }
 }

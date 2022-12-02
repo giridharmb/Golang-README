@@ -64,6 +64,8 @@
 
 [Worker Pool V3](#worker-pool-v3)
 
+[Ubuntu Service File Running Binary](#ubuntu-service-file-running-binary)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -4377,4 +4379,52 @@ func GetMD5Hash(data interface{}) interface{} {
     md5Value := hex.EncodeToString(hasher.Sum(nil))
     return md5Value
 }
+```
+
+#### [Ubuntu Service File Running Binary](#ubuntu-service-file-running-binary)
+
+Generate Binary
+
+```bash
+go build -o /bin/fileuploader
+```
+
+Service File `/lib/systemd/system/fileuploader.service`
+
+```ini
+[Unit]
+Description=File Upload Server
+ConditionPathExists=/var/www/html/upload_dir
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/bin/fileuploader -destination_directory=/var/www/html/upload_dir
+Restart=on-failure
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=fileuploader
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Create Softlink
+
+```bash
+ln -s /lib/systemd/system/fileuploader.service /etc/systemd/system/fileuploader.service
+```
+
+Enable Service
+
+```bash
+systemctl enable /lib/systemd/system/fileuploader.service
+```
+
+Restart Service
+
+```bash
+systemctl stop fileuploader;sleep 3; systemctl start fileuploader;
 ```

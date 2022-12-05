@@ -66,6 +66,8 @@
 
 [Ubuntu Service File Running Binary](#ubuntu-service-file-running-binary)
 
+[Parse EMail Address](#parse-email-address)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -4427,4 +4429,47 @@ Restart Service
 
 ```bash
 systemctl stop fileuploader;sleep 3; systemctl start fileuploader;
+```
+
+#### [Parse EMail Address](#parse-email-address)
+
+```go
+package main
+
+import (
+    "fmt"
+    "net/mail"
+)
+
+func validMailAddress(address string) (string, bool) {
+    addr, err := mail.ParseAddress(address)
+    if err != nil {
+        return "", false
+    }
+    return addr.Address, true
+}
+
+var addresses = []string{
+    "foo@gmail.com",
+    "Gopher <from@example.com>",
+    "example",
+}
+
+func main() {
+    for _, a := range addresses {
+        if addr, ok := validMailAddress(a); ok {
+            fmt.Printf("value: %-30s valid email: %-10t address: %s\n", a, ok, addr)
+        } else {
+            fmt.Printf("value: %-30s valid email: %-10t\n", a, ok)
+        }
+    }
+}
+```
+
+Output
+
+```bash
+value: foo@gmail.com                  valid email: true       address: foo@gmail.com
+value: Gopher <from@example.com>      valid email: true       address: from@example.com
+value: example                        valid email: false     
 ```

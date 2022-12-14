@@ -68,6 +68,8 @@
 
 [Parse EMail Address](#parse-email-address)
 
+[Return Channel From Function](#return-channel-from-function)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -4472,4 +4474,235 @@ Output
 value: foo@gmail.com                  valid email: true       address: foo@gmail.com
 value: Gopher <from@example.com>      valid email: true       address: from@example.com
 value: example                        valid email: false     
+```
+
+#### [Return Channel From Function](#return-channel-from-function)
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "log"
+    "math/rand"
+    "sync"
+    "time"
+)
+
+func GenerateChan(nums []int) <-chan int {
+    out := make(chan int)
+    go func() {
+        for _, n := range nums {
+            time.Sleep(500 * time.Millisecond)
+            out <- n
+        }
+        close(out)
+    }()
+
+    return out
+}
+
+func GenerateInputData() []int {
+    myRandomList := make([]int, 0)
+
+    for i := 1; i <= 27; i++ {
+        myRandomList = append(myRandomList, GetRandomNumber())
+    }
+    return myRandomList
+}
+
+func main() {
+
+    myRandomList := GenerateInputData()
+
+    chunkSize := 6
+
+    chunks := BreakIntoMultipleChunks(myRandomList, chunkSize)
+
+    fmt.Printf("\n------------[chunks (input)]------------\n")
+
+    PrettyPrintData(chunks)
+
+    fmt.Printf("\n------------[sequential_processing]------------\n\n")
+
+    for _, chunk := range chunks {
+        ProcessChunkDataSequentially(chunk)
+    }
+
+    fmt.Printf("\n------------[parallel_processing]------------\n\n")
+
+    var wg sync.WaitGroup
+
+    for _, chunk := range chunks {
+        wg.Add(1)
+        go ProcessChunkDataInParallel(&wg, chunk)
+    }
+    wg.Wait()
+}
+
+func ProcessChunkDataInParallel(wg *sync.WaitGroup, myChunk []int) {
+    defer wg.Done()
+    dataChan := GenerateChan(myChunk)
+    for {
+        data, ok := <-dataChan
+        if !ok {
+            break
+        }
+        log.Printf("ProcessChunkDataInParallel() : received data from chan : %v", data)
+    }
+}
+
+func ProcessChunkDataSequentially(myChunk []int) {
+    dataChan := GenerateChan(myChunk)
+    for {
+        data, ok := <-dataChan
+        if !ok {
+            break
+        }
+        log.Printf("ProcessChunkDataSequentially() : received data from chan : %v", data)
+    }
+}
+
+func GetRandomNumber() int {
+    rand.Seed(time.Now().UnixNano())
+    max := 900
+    min := 100
+    rand.Seed(time.Now().UnixNano())
+    return rand.Intn(max-min) + min
+}
+
+func PrettyPrintData(data interface{}) {
+    dataBytes, err := json.MarshalIndent(data, "", "    ")
+    if err != nil {
+        log.Printf("error : could not MarshalIndent json : %v", err.Error())
+        return
+    }
+    fmt.Printf("\n%v\n\n", string(dataBytes))
+}
+
+func BreakIntoMultipleChunks(slice []int, chunkSize int) [][]int {
+    var chunks [][]int
+    for i := 0; i < len(slice); i += chunkSize {
+        end := i + chunkSize
+
+        // necessary check to avoid slicing beyond slice capacity
+        if end > len(slice) {
+            end = len(slice)
+        }
+
+        chunks = append(chunks, slice[i:end])
+    }
+
+    return chunks
+}
+```
+
+Output
+
+```bash
+❯ go run main.go
+
+------------[chunks (input)]------------
+
+[
+    [
+        186,
+        719,
+        425,
+        336,
+        382,
+        449
+    ],
+    [
+        747,
+        881,
+        864,
+        496,
+        539,
+        607
+    ],
+    [
+        426,
+        818,
+        764,
+        781,
+        336,
+        668
+    ],
+    [
+        591,
+        136,
+        639,
+        874,
+        686,
+        633
+    ],
+    [
+        222,
+        237,
+        296
+    ]
+]
+
+
+------------[sequential_processing]------------
+
+2022/12/14 11:31:58 ProcessChunkDataSequentially() : received data from chan : 186
+2022/12/14 11:31:58 ProcessChunkDataSequentially() : received data from chan : 719
+2022/12/14 11:31:59 ProcessChunkDataSequentially() : received data from chan : 425
+2022/12/14 11:31:59 ProcessChunkDataSequentially() : received data from chan : 336
+2022/12/14 11:32:00 ProcessChunkDataSequentially() : received data from chan : 382
+2022/12/14 11:32:00 ProcessChunkDataSequentially() : received data from chan : 449
+2022/12/14 11:32:01 ProcessChunkDataSequentially() : received data from chan : 747
+2022/12/14 11:32:01 ProcessChunkDataSequentially() : received data from chan : 881
+2022/12/14 11:32:02 ProcessChunkDataSequentially() : received data from chan : 864
+2022/12/14 11:32:02 ProcessChunkDataSequentially() : received data from chan : 496
+2022/12/14 11:32:03 ProcessChunkDataSequentially() : received data from chan : 539
+2022/12/14 11:32:03 ProcessChunkDataSequentially() : received data from chan : 607
+2022/12/14 11:32:04 ProcessChunkDataSequentially() : received data from chan : 426
+2022/12/14 11:32:04 ProcessChunkDataSequentially() : received data from chan : 818
+2022/12/14 11:32:05 ProcessChunkDataSequentially() : received data from chan : 764
+2022/12/14 11:32:05 ProcessChunkDataSequentially() : received data from chan : 781
+2022/12/14 11:32:06 ProcessChunkDataSequentially() : received data from chan : 336
+2022/12/14 11:32:06 ProcessChunkDataSequentially() : received data from chan : 668
+2022/12/14 11:32:07 ProcessChunkDataSequentially() : received data from chan : 591
+2022/12/14 11:32:07 ProcessChunkDataSequentially() : received data from chan : 136
+2022/12/14 11:32:08 ProcessChunkDataSequentially() : received data from chan : 639
+2022/12/14 11:32:08 ProcessChunkDataSequentially() : received data from chan : 874
+2022/12/14 11:32:09 ProcessChunkDataSequentially() : received data from chan : 686
+2022/12/14 11:32:09 ProcessChunkDataSequentially() : received data from chan : 633
+2022/12/14 11:32:10 ProcessChunkDataSequentially() : received data from chan : 222
+2022/12/14 11:32:10 ProcessChunkDataSequentially() : received data from chan : 237
+2022/12/14 11:32:11 ProcessChunkDataSequentially() : received data from chan : 296
+
+------------[parallel_processing]------------
+
+2022/12/14 11:32:11 ProcessChunkDataInParallel() : received data from chan : 591
+2022/12/14 11:32:11 ProcessChunkDataInParallel() : received data from chan : 222
+2022/12/14 11:32:11 ProcessChunkDataInParallel() : received data from chan : 186
+2022/12/14 11:32:11 ProcessChunkDataInParallel() : received data from chan : 747
+2022/12/14 11:32:11 ProcessChunkDataInParallel() : received data from chan : 426
+2022/12/14 11:32:12 ProcessChunkDataInParallel() : received data from chan : 818
+2022/12/14 11:32:12 ProcessChunkDataInParallel() : received data from chan : 237
+2022/12/14 11:32:12 ProcessChunkDataInParallel() : received data from chan : 136
+2022/12/14 11:32:12 ProcessChunkDataInParallel() : received data from chan : 719
+2022/12/14 11:32:12 ProcessChunkDataInParallel() : received data from chan : 881
+2022/12/14 11:32:12 ProcessChunkDataInParallel() : received data from chan : 864
+2022/12/14 11:32:12 ProcessChunkDataInParallel() : received data from chan : 764
+2022/12/14 11:32:12 ProcessChunkDataInParallel() : received data from chan : 639
+2022/12/14 11:32:12 ProcessChunkDataInParallel() : received data from chan : 296
+2022/12/14 11:32:12 ProcessChunkDataInParallel() : received data from chan : 425
+2022/12/14 11:32:13 ProcessChunkDataInParallel() : received data from chan : 496
+2022/12/14 11:32:13 ProcessChunkDataInParallel() : received data from chan : 336
+2022/12/14 11:32:13 ProcessChunkDataInParallel() : received data from chan : 874
+2022/12/14 11:32:13 ProcessChunkDataInParallel() : received data from chan : 781
+2022/12/14 11:32:13 ProcessChunkDataInParallel() : received data from chan : 686
+2022/12/14 11:32:13 ProcessChunkDataInParallel() : received data from chan : 336
+2022/12/14 11:32:13 ProcessChunkDataInParallel() : received data from chan : 382
+2022/12/14 11:32:13 ProcessChunkDataInParallel() : received data from chan : 539
+2022/12/14 11:32:14 ProcessChunkDataInParallel() : received data from chan : 633
+2022/12/14 11:32:14 ProcessChunkDataInParallel() : received data from chan : 607
+2022/12/14 11:32:14 ProcessChunkDataInParallel() : received data from chan : 668
+2022/12/14 11:32:14 ProcessChunkDataInParallel() : received data from chan : 449
 ```

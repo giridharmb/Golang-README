@@ -4565,7 +4565,6 @@ func ProcessChunkDataSequentially(myChunk []int) {
 }
 
 func GetRandomNumber() int {
-    rand.Seed(time.Now().UnixNano())
     max := 900
     min := 100
     rand.Seed(time.Now().UnixNano())

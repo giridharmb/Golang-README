@@ -72,6 +72,8 @@
 
 [Return Channel From Function V2](#return-channel-from-function-v2)
 
+[Return Channel From Function V3](#return-channel-from-function-v3)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -4712,6 +4714,8 @@ Output
 
 #### [Return Channel From Function V2](#return-channel-from-function-v2)
 
+Using `generics`
+
 ```go
 package main
 
@@ -4795,6 +4799,123 @@ func PrettyPrintData(data interface{}) {
 
 func BreakIntoMultipleChunks[T any](slice []T, chunkSize int) [][]T {
     var chunks [][]T
+    for i := 0; i < len(slice); i += chunkSize {
+        end := i + chunkSize
+
+        // necessary check to avoid slicing beyond slice capacity
+        if end > len(slice) {
+            end = len(slice)
+        }
+
+        chunks = append(chunks, slice[i:end])
+    }
+
+    return chunks
+}
+```
+
+#### [Return Channel From Function V3](#return-channel-from-function-v3)
+
+Using `Slice` as a type of `[]int`
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "log"
+    "math/rand"
+    "time"
+)
+
+type Slice []int
+
+type ISlice interface {
+    BreakSlice(chunkSize int) []Slice
+}
+
+func (d Slice) BreakSlice(chunkSize int) []Slice {
+    listOfListOfItems := BreakIntoMultipleChunks(d, chunkSize)
+    return listOfListOfItems
+}
+
+func CreateDataChannelAndPushData(totalListsToGenerate int, countOfElementsPerSlice int) <-chan Slice {
+    out := make(chan Slice)
+    go func() {
+        // generate a total of (totalListsToGenerate) lists
+        // each list having a total of (countOfElementsPerSlice) elements
+        for i := 0; i < totalListsToGenerate; i++ {
+            mySlice := GenerateData(countOfElementsPerSlice)
+
+            chunkSize := 10
+
+            // if length of (mySlice) is 100 (total elements in the slice)
+            // then break it down into chunks of (chunkSize) elements
+            // sliceList is []Slice
+
+            sliceList := mySlice.BreakSlice(chunkSize)
+
+            for _, slice := range sliceList {
+                // here length of (slice) will be 10
+                fmt.Printf("\n---[slice]---\n\n")
+                PrettyPrintData(slice)
+                time.Sleep(500 * time.Millisecond)
+                // push (slice) onto the return channel
+                out <- slice
+            }
+        }
+        close(out)
+    }()
+    return out
+}
+
+func GenerateData(countOfElements int) Slice {
+    //myRandomList := Slice([]int{})
+    myRandomList := make(Slice, 0)
+    for i := 0; i < countOfElements; i++ {
+        myRandomList = append(myRandomList, GetRandomNumber())
+    }
+    return myRandomList
+}
+
+func main() {
+    fmt.Printf("\n----[sequential_processing]----\n\n")
+    ProcessDataFromChannel()
+}
+
+func ProcessDataFromChannel() {
+
+    totalListsToGenerate := 5
+    countOfElementsPerSlice := 14
+    dataChan := CreateDataChannelAndPushData(totalListsToGenerate, countOfElementsPerSlice)
+    for {
+        data, ok := <-dataChan
+        if !ok {
+            break
+        }
+        log.Printf("ProcessDataFromChannel() : received data from chan : %v", data)
+    }
+}
+
+func GetRandomNumber() int {
+    max := 900
+    min := 100
+    rand.Seed(time.Now().UnixNano())
+    return rand.Intn(max-min) + min
+}
+
+func PrettyPrintData(data interface{}) {
+    dataBytes, err := json.MarshalIndent(data, "", "    ")
+    if err != nil {
+        log.Printf("error : could not MarshalIndent json : %v", err.Error())
+        return
+    }
+    fmt.Printf("\n%v\n\n", string(dataBytes))
+}
+
+func BreakIntoMultipleChunks(slice Slice, chunkSize int) []Slice {
+    var chunks []Slice
     for i := 0; i < len(slice); i += chunkSize {
         end := i + chunkSize
 

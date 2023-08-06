@@ -76,6 +76,8 @@
 
 [Return Channel From Function V3](#return-channel-from-function-v3)
 
+[Factory Design Pattern V1](#factory-design-pattern-v1)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -5518,5 +5520,197 @@ func BreakIntoMultipleChunks(slice Slice, chunkSize int) []Slice {
     }
 
     return chunks
+}
+```
+
+#### [Factory Design Pattern V1](#factory-design-pattern-v1)
+
+Making HTTP Request To Different API Endpoints
+
+```main.go
+package main
+
+import "net/http"
+
+type HTTPClient interface {
+    Do(req *http.Request) (*http.Response, error)
+}
+```
+
+```main.go
+package main
+
+import "net/http"
+
+type APIClient1 struct {
+    Client *http.Client
+}
+
+func (c *APIClient1) Do(req *http.Request) (*http.Response, error) {
+    // Customize request or authentication specific to API endpoint 1 if needed
+    return c.Client.Do(req)
+}
+
+type APIClient2 struct {
+    Client *http.Client
+}
+
+func (c *APIClient2) Do(req *http.Request) (*http.Response, error) {
+    // Customize request or authentication specific to API endpoint 2 if needed
+    return c.Client.Do(req)
+}
+```
+
+```main.go
+package main
+
+import "net/http"
+
+func HTTPClientFactory(apiEndpoint string) HTTPClient {
+    switch apiEndpoint {
+    case "api1":
+        return &APIClient1{
+            Client: &http.Client{},
+        }
+
+    case "api2":
+        return &APIClient2{
+            Client: &http.Client{},
+        }
+
+    default:
+        // Return a default HTTP client or handle error accordingly
+        return &http.Client{}
+    }
+}
+```
+
+```main.go
+package main
+
+import (
+    "fmt"
+    "io/ioutil"
+)
+
+func main() {
+    // Replace this with your desired API endpoint
+    apiEndpoint := "api1"
+
+    // Create the HTTP client based on the selected API endpoint
+    client := HTTPClientFactory(apiEndpoint)
+
+    // Replace this with your desired API endpoint URL
+    url := "https://api.example.com/endpoint"
+
+    // Create an HTTP request
+    req, err := http.NewRequest("GET", url, nil)
+    if err != nil {
+        fmt.Println("Error creating HTTP request:", err)
+        return
+    }
+
+    // Make the HTTP request using the selected API client
+    resp, err := client.Do(req)
+    if err != nil {
+        fmt.Println("Error making HTTP request:", err)
+        return
+    }
+    defer resp.Body.Close()
+
+    // Read the response body
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        fmt.Println("Error reading response body:", err)
+        return
+    }
+
+    fmt.Println("Response:", string(body))
+}
+```
+
+Sending Notification Via Different Methods (EMail/SMS)
+
+```main.go
+package main
+
+type Notifier interface {
+    SendNotification(message string) error
+}
+```
+
+```main.go
+package main
+
+import "fmt"
+
+type EmailNotifier struct {
+    Email string
+}
+
+func (en *EmailNotifier) SendNotification(message string) error {
+    // Implement the logic to send an email notification.
+    fmt.Printf("Sending email to %s: %s\n", en.Email, message)
+    return nil
+}
+```
+
+```main.go
+package main
+
+import "fmt"
+
+type SMSNotifier struct {
+    PhoneNumber string
+}
+
+func (sn *SMSNotifier) SendNotification(message string) error {
+    // Implement the logic to send an SMS notification.
+    fmt.Printf("Sending SMS to %s: %s\n", sn.PhoneNumber, message)
+    return nil
+}
+```
+
+```main.go
+package main
+
+func NotifierFactory(notificationType string, recipient string) (Notifier, error) {
+    switch notificationType {
+    case "email":
+        return &EmailNotifier{Email: recipient}, nil
+
+    case "sms":
+        return &SMSNotifier{PhoneNumber: recipient}, nil
+
+    default:
+        return nil, fmt.Errorf("unsupported notification type: %s", notificationType)
+    }
+}
+```
+
+```main.go
+package main
+
+import "fmt"
+
+func main() {
+    // Replace this with your desired notification type and recipient
+    notificationType := "email"
+    recipient := "user@example.com"
+
+    // Create the notifier based on the selected notification type and recipient
+    notifier, err := NotifierFactory(notificationType, recipient)
+    if err != nil {
+        fmt.Println("Error creating notifier:", err)
+        return
+    }
+
+    // Send a sample notification
+    message := "Hello, this is a test notification!"
+    err = notifier.SendNotification(message)
+    if err != nil {
+        fmt.Println("Error sending notification:", err)
+        return
+    }
 }
 ```

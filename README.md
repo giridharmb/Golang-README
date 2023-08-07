@@ -88,6 +88,8 @@
 
 [Percentile Calculation](#percentile-calculation)
 
+[JWT Authentication And Authorization](#jwt-authenication-and-authorization)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -6165,5 +6167,118 @@ func main() {
     fmt.Println("25th percentile (Q1):", q1)
     fmt.Println("Median:", median)
     fmt.Println("75th percentile (Q3):", q3)
+}
+```
+
+#### [JWT Authentication And Authorization](#jwt-authenication-and-authorization)
+
+```bash
+go get github.com/gorilla/mux
+go get github.com/dgrijalva/jwt-go
+```
+
+`main.go`
+
+```go
+package main
+
+import (
+    "fmt"
+    "net/http"
+    "time"
+
+    "github.com/dgrijalva/jwt-go"
+    "github.com/gorilla/mux"
+)
+
+// Secret key for JWT signing (This should be kept secure)
+var jwtSecret = []byte("your_secret_key")
+
+// User struct to represent user details
+type User struct {
+    Username string
+    Password string
+}
+
+// Handler for login route
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+    // Replace this with your own user authentication logic
+    // For simplicity, we are using hardcoded user credentials here.
+    username := "admin"
+    password := "password"
+
+    // Read the provided username and password from the request body
+    r.ParseForm()
+    reqUsername := r.Form.Get("username")
+    reqPassword := r.Form.Get("password")
+
+    // Check if the credentials match the hardcoded user credentials
+    if reqUsername == username && reqPassword == password {
+        // If the credentials are valid, create and sign a new JWT token
+        token := jwt.New(jwt.SigningMethodHS256)
+        claims := token.Claims.(jwt.MapClaims)
+        claims["username"] = reqUsername
+        claims["exp"] = time.Now().Add(time.Hour * 24).Unix() // Token expiration time: 1 day
+
+        tokenString, err := token.SignedString(jwtSecret)
+        if err != nil {
+            http.Error(w, "Failed to generate JWT token", http.StatusInternalServerError)
+            return
+        }
+
+        // Send the token as response
+        w.Write([]byte(tokenString))
+    } else {
+        http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+    }
+}
+
+// Middleware to check JWT token for protected routes
+func authMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        tokenString := r.Header.Get("Authorization")
+        if tokenString == "" {
+            http.Error(w, "Missing authorization token", http.StatusUnauthorized)
+            return
+        }
+
+        // Parse the token
+        token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+            return jwtSecret, nil
+        })
+
+        if err != nil {
+            http.Error(w, "Invalid authorization token", http.StatusUnauthorized)
+            return
+        }
+
+        if !token.Valid {
+            http.Error(w, "Invalid authorization token", http.StatusUnauthorized)
+            return
+        }
+
+        // Token is valid, proceed to the protected route
+        next.ServeHTTP(w, r)
+    })
+}
+
+// Protected route
+func protectedHandler(w http.ResponseWriter, r *http.Request) {
+    fmt.Fprintln(w, "Welcome to the protected route!")
+}
+
+func main() {
+    r := mux.NewRouter()
+
+    // Login route to generate JWT token
+    r.HandleFunc("/login", loginHandler).Methods("POST")
+
+    // Protected route with authorization middleware
+    r.Handle("/protected", authMiddleware(http.HandlerFunc(protectedHandler))).Methods("GET")
+
+    http.Handle("/", r)
+
+    fmt.Println("Server listening on :8080")
+    http.ListenAndServe(":8080", nil)
 }
 ```

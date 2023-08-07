@@ -88,7 +88,7 @@
 
 [Percentile Calculation](#percentile-calculation)
 
-[JWT Authentication And Authorization](#jwt-authenication-and-authorization)
+[JWT Authentication And Authorization](#jwt-authentication-and-authorization)
 
 <hr/>
 
@@ -6170,7 +6170,7 @@ func main() {
 }
 ```
 
-#### [JWT Authentication And Authorization](#jwt-authenication-and-authorization)
+#### [JWT Authentication And Authorization](#jwt-authentication-and-authorization)
 
 ```bash
 go get github.com/gorilla/mux

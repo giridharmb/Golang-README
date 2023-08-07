@@ -80,6 +80,10 @@
 
 [Factory Design Pattern V2](#factory-design-pattern-v2)
 
+[Read Config File](#read-config-file)
+
+[Read YAML Config File](#read-yaml-config-file)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -5875,5 +5879,162 @@ func main() {
 
     // Execute the operation
     operation.Execute()
+}
+```
+
+#### [Read Config File](#read-config-file)
+
+```bash
+go get github.com/go-ini/ini
+```
+
+`config.ini`
+
+```ini
+[database]
+host = localhost
+port = 5432
+username = myuser
+password = mypassword
+```
+
+`main.go`
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "gopkg.in/ini.v1"
+)
+
+type DatabaseConfig struct {
+    Host     string
+    Port     int
+    Username string
+    Password string
+}
+
+func main() {
+    // Load the config.ini file
+    cfg, err := ini.Load("config.ini")
+    if err != nil {
+        log.Fatalf("Failed to read config file: %v", err)
+    }
+
+    // Parse the database section
+    databaseSection := cfg.Section("database")
+
+    // Get values from the database section
+    host := databaseSection.Key("host").String()
+    port, _ := databaseSection.Key("port").Int()
+    username := databaseSection.Key("username").String()
+    password := databaseSection.Key("password").String()
+
+    // Create a DatabaseConfig instance with the parsed values
+    dbConfig := DatabaseConfig{
+        Host:     host,
+        Port:     port,
+        Username: username,
+        Password: password,
+    }
+
+    // Print the configuration
+    fmt.Println("Database Configuration:")
+    fmt.Println("Host:", dbConfig.Host)
+    fmt.Println("Port:", dbConfig.Port)
+    fmt.Println("Username:", dbConfig.Username)
+    fmt.Println("Password:", dbConfig.Password)
+}
+```
+
+#### [Read YAML Config File](#read-yaml-config-file)
+
+`config.yaml`
+
+```yaml
+database:
+  host: localhost
+  port: 5432
+  username: myuser
+  password: mypassword
+
+api:
+  endpoint: https://api.example.com
+  key: abcdef123456
+
+logging:
+  level: info
+  format: json
+```
+
+`main.go`
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "os"
+
+    "gopkg.in/yaml.v3"
+)
+
+type DatabaseConfig struct {
+    Host     string `yaml:"host"`
+    Port     int    `yaml:"port"`
+    Username string `yaml:"username"`
+    Password string `yaml:"password"`
+}
+
+type APIConfig struct {
+    Endpoint string `yaml:"endpoint"`
+    Key      string `yaml:"key"`
+}
+
+type LoggingConfig struct {
+    Level  string `yaml:"level"`
+    Format string `yaml:"format"`
+}
+
+type Config struct {
+    Database DatabaseConfig `yaml:"database"`
+    API      APIConfig      `yaml:"api"`
+    Logging  LoggingConfig  `yaml:"logging"`
+}
+
+func main() {
+    // Open the config.yaml file
+    file, err := os.Open("config.yaml")
+    if err != nil {
+        log.Fatalf("Failed to open config file: %v", err)
+    }
+    defer file.Close()
+
+    // Decode the YAML file into the Config struct
+    var cfg Config
+    decoder := yaml.NewDecoder(file)
+    err = decoder.Decode(&cfg)
+    if err != nil {
+        log.Fatalf("Failed to decode config file: %v", err)
+    }
+
+    // Print the configuration
+    fmt.Println("Database Configuration:")
+    fmt.Println("Host:", cfg.Database.Host)
+    fmt.Println("Port:", cfg.Database.Port)
+    fmt.Println("Username:", cfg.Database.Username)
+    fmt.Println("Password:", cfg.Database.Password)
+
+    fmt.Println("\nAPI Configuration:")
+    fmt.Println("Endpoint:", cfg.API.Endpoint)
+    fmt.Println("Key:", cfg.API.Key)
+
+    fmt.Println("\nLogging Configuration:")
+    fmt.Println("Level:", cfg.Logging.Level)
+    fmt.Println("Format:", cfg.Logging.Format)
 }
 ```

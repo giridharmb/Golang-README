@@ -5952,6 +5952,10 @@ func main() {
 
 #### [Read YAML Config File](#read-yaml-config-file)
 
+```bash
+go get gopkg.in/yaml.v3
+```
+
 `config.yaml`
 
 ```yaml

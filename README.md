@@ -78,6 +78,8 @@
 
 [Factory Design Pattern V1](#factory-design-pattern-v1)
 
+[Factory Design Pattern V2](#factory-design-pattern-v2)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -5527,7 +5529,7 @@ func BreakIntoMultipleChunks(slice Slice, chunkSize int) []Slice {
 
 Making HTTP Request To Different API Endpoints
 
-```main.go
+```go
 package main
 
 import "net/http"
@@ -5537,7 +5539,7 @@ type HTTPClient interface {
 }
 ```
 
-```main.go
+```go
 package main
 
 import "net/http"
@@ -5561,7 +5563,7 @@ func (c *APIClient2) Do(req *http.Request) (*http.Response, error) {
 }
 ```
 
-```main.go
+```go
 package main
 
 import "net/http"
@@ -5585,7 +5587,7 @@ func HTTPClientFactory(apiEndpoint string) HTTPClient {
 }
 ```
 
-```main.go
+```go
 package main
 
 import (
@@ -5631,7 +5633,7 @@ func main() {
 
 Sending Notification Via Different Methods (EMail/SMS)
 
-```main.go
+```go
 package main
 
 type Notifier interface {
@@ -5639,7 +5641,7 @@ type Notifier interface {
 }
 ```
 
-```main.go
+```go
 package main
 
 import "fmt"
@@ -5655,7 +5657,7 @@ func (en *EmailNotifier) SendNotification(message string) error {
 }
 ```
 
-```main.go
+```go
 package main
 
 import "fmt"
@@ -5671,7 +5673,7 @@ func (sn *SMSNotifier) SendNotification(message string) error {
 }
 ```
 
-```main.go
+```go
 package main
 
 func NotifierFactory(notificationType string, recipient string) (Notifier, error) {
@@ -5688,7 +5690,7 @@ func NotifierFactory(notificationType string, recipient string) (Notifier, error
 }
 ```
 
-```main.go
+```go
 package main
 
 import "fmt"
@@ -5712,5 +5714,166 @@ func main() {
         fmt.Println("Error sending notification:", err)
         return
     }
+}
+```
+
+#### [Factory Design Pattern V2](#factory-design-pattern-v2)
+
+Another Example Of Factory Design Pattern
+
+```go
+package main
+
+type Function interface {
+    Run(arg1, arg2, arg3 string) // Modify the argument types as per your needs
+}
+```
+
+```go
+package main
+
+import "fmt"
+
+type Function1 struct{}
+
+func (f *Function1) Run(arg1, arg2, arg3 string) {
+    fmt.Println("Running Function1 with arguments:", arg1, arg2, arg3)
+}
+
+type Function2 struct{}
+
+func (f *Function2) Run(arg1, arg2, arg3 string) {
+    fmt.Println("Running Function2 with arguments:", arg1, arg2, arg3)
+}
+
+type Function3 struct{}
+
+func (f *Function3) Run(arg1, arg2, arg3 string) {
+    fmt.Println("Running Function3 with arguments:", arg1, arg2, arg3)
+}
+```
+
+```go
+package main
+
+func FunctionFactory(functionName string) Function {
+    switch functionName {
+    case "function1":
+        return &Function1{}
+
+    case "function2":
+        return &Function2{}
+
+    case "function3":
+        return &Function3{}
+
+    default:
+        // Return a default function or handle error accordingly
+        return nil
+    }
+}
+```
+
+```go
+package main
+
+import (
+    "fmt"
+)
+
+func main() {
+    // Replace this with your desired function name
+    functionName := "function2"
+
+    // Create the function based on the selected function name
+    fn := FunctionFactory(functionName)
+    if fn == nil {
+        fmt.Println("Invalid function name:", functionName)
+        return
+    }
+
+    // Call the function with multiple arguments
+    arg1 := "Hello"
+    arg2 := "Factory"
+    arg3 := "Pattern"
+    fn.Run(arg1, arg2, arg3)
+}
+```
+
+One Of Many Operations That Can Be Invoked
+
+```go
+package main
+
+type Operation interface {
+    Execute()
+}
+```
+
+```go
+package main
+
+import "fmt"
+
+type Operation1 struct{}
+
+func (o *Operation1) Execute() {
+    fmt.Println("Executing Operation 1")
+}
+
+type Operation2 struct{}
+
+func (o *Operation2) Execute() {
+    fmt.Println("Executing Operation 2")
+}
+
+type Operation3 struct{}
+
+func (o *Operation3) Execute() {
+    fmt.Println("Executing Operation 3")
+}
+```
+
+```go
+package main
+
+func OperationFactory(operationName string) Operation {
+    switch operationName {
+    case "operation1":
+        return &Operation1{}
+
+    case "operation2":
+        return &Operation2{}
+
+    case "operation3":
+        return &Operation3{}
+
+    default:
+        // Return a default operation or handle error accordingly
+        return nil
+    }
+}
+```
+
+```go
+package main
+
+import (
+    "fmt"
+)
+
+func main() {
+    // Replace this with your desired operation name
+    operationName := "operation2"
+
+    // Create the operation based on the selected operation name
+    operation := OperationFactory(operationName)
+    if operation == nil {
+        fmt.Println("Invalid operation name:", operationName)
+        return
+    }
+
+    // Execute the operation
+    operation.Execute()
 }
 ```

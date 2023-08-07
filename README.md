@@ -84,6 +84,10 @@
 
 [Read YAML Config File](#read-yaml-config-file)
 
+[Eliminate Outliers](#eliminate-outliers)
+
+[Percentile Calculation](#percentile-calculation)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -6040,5 +6044,126 @@ func main() {
     fmt.Println("\nLogging Configuration:")
     fmt.Println("Level:", cfg.Logging.Level)
     fmt.Println("Format:", cfg.Logging.Format)
+}
+```
+
+#### [Eliminate Outliers](#eliminate-outliers)
+
+```go
+package main
+
+import (
+    "fmt"
+    "sort"
+)
+
+func removeOutliers(arr []int) []int {
+    // Sort the array in ascending order
+    sortedArr := make([]int, len(arr))
+    copy(sortedArr, arr)
+    sort.Ints(sortedArr)
+
+    // Calculate the first quartile (Q1) and third quartile (Q3)
+    q1 := quartile(sortedArr, 25)
+    q3 := quartile(sortedArr, 75)
+
+    // Calculate the Interquartile Range (IQR)
+    iqr := q3 - q1
+
+    // Define the lower and upper bounds to identify outliers
+    lowerBound := q1 - (1.5 * iqr)
+    upperBound := q3 + (1.5 * iqr)
+
+    // Create a new array without outliers
+    filteredArr := make([]int, 0)
+    for _, num := range arr {
+        if float64(num) >= lowerBound && float64(num) <= upperBound {
+            filteredArr = append(filteredArr, num)
+        }
+    }
+
+    return filteredArr
+}
+
+func quartile(arr []int, percentile int) float64 {
+    index := float64(len(arr)-1) * (float64(percentile) / 100)
+    if index == float64(int(index)) {
+        return float64(arr[int(index)])
+    } else {
+        lower := float64(arr[int(index)])
+        upper := float64(arr[int(index)+1])
+        fraction := index - float64(int(index))
+        return lower + fraction*(upper-lower)
+    }
+}
+
+func main() {
+    // Example array with outliers
+    numbers := []int{2, 4, 6, 8, 10, 1000, 12, 14, 16, 18, 20}
+
+    // Remove outliers using IQR method
+    filteredNumbers := removeOutliers(numbers)
+
+    // Print the filtered array
+    fmt.Println("Filtered Array:", filteredNumbers)
+}
+```
+
+Output
+
+```bash
+Filtered Array: [2 4 6 8 10 12 14 16 18 20]
+```
+
+#### [Percentile Calculation](#percentile-calculation)
+
+To calculate percentiles for outlier detection in Go, you can use the sort<br/>
+package to sort the data and then calculate the value at a specific percentile position.<br/>
+For example, you can calculate the 25th percentile (Q1), 50th percentile (median), and<br/>
+75th percentile (Q3) to use the Interquartile Range (IQR) method for outlier detection.<br/>
+
+```go
+package main
+
+import (
+    "fmt"
+    "sort"
+)
+
+func calculatePercentile(arr []int, percentile int) float64 {
+    // Sort the array in ascending order
+    sortedArr := make([]int, len(arr))
+    copy(sortedArr, arr)
+    sort.Ints(sortedArr)
+
+    // Calculate the index for the specified percentile
+    index := float64(len(sortedArr)-1) * (float64(percentile) / 100)
+
+    // If the index is an integer, return the exact value
+    if index == float64(int(index)) {
+        return float64(sortedArr[int(index)])
+    }
+
+    // Otherwise, perform linear interpolation to find the value at the specified percentile
+    lower := float64(sortedArr[int(index)])
+    upper := float64(sortedArr[int(index)+1])
+    fraction := index - float64(int(index))
+
+    return lower + fraction*(upper-lower)
+}
+
+func main() {
+    // Example array
+    numbers := []int{2, 4, 6, 8, 10, 12, 14, 16, 18, 20}
+
+    // Calculate percentiles
+    q1 := calculatePercentile(numbers, 25)
+    median := calculatePercentile(numbers, 50)
+    q3 := calculatePercentile(numbers, 75)
+
+    // Print the calculated percentiles
+    fmt.Println("25th percentile (Q1):", q1)
+    fmt.Println("Median:", median)
+    fmt.Println("75th percentile (Q3):", q3)
 }
 ```

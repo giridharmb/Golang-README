@@ -76,6 +76,8 @@
 
 [Return Channel From Function V3](#return-channel-from-function-v3)
 
+[Factory Design Pattern](#factory-design-pattern)
+
 [Factory Design Pattern V1](#factory-design-pattern-v1)
 
 [Factory Design Pattern V2](#factory-design-pattern-v2)
@@ -5534,6 +5536,28 @@ func BreakIntoMultipleChunks(slice Slice, chunkSize int) []Slice {
     return chunks
 }
 ```
+
+#### [Factory Design Pattern](#factory-design-pattern)
+
+In the context of the Factory Design Pattern, the term "repository" is often used to refer to a specific<br/> 
+implementation of the pattern that deals with data storage and retrieval. While the Factory Design Pattern itself<br/>
+is focused on creating objects, the "repository" here is a concept that encapsulates the data access layer of an application.<br/>
+This layer is responsible for managing the interaction between the application code and the underlying data storage,<br/>
+such as databases, APIs, or other data sources.
+
+The choice to use the term "repository" comes from the idea that this component acts as a repository for the data,<br/>
+providing a clean and consistent interface for the rest of the application to interact with the data storage.<br/>
+The goal is to abstract away the complexities of data access and provide a high-level, easy-to-use API for<br/>
+performing CRUD (Create, Read, Update, Delete) operations on the data.
+
+In the context of Go, a repository often involves defining interfaces and implementing concrete types that<br/>
+adhere to those interfaces. This allows you to decouple your application's business logic from the underlying<br/>
+data storage mechanism. By using the Factory Design Pattern, you can create instances of these repository<br/>
+implementations without tightly coupling your application code to the specific details of data storage.<br/>
+
+To summarize, the term "repository" in the context of the Factory Design Pattern represents a design approach<br/>
+for handling data access and storage, encapsulating data-related logic behind a clean and consistent interface.<br/>
+It's a part of the overall architecture that helps separate concerns and improve code maintainability.<br/>
 
 #### [Factory Design Pattern V1](#factory-design-pattern-v1)
 

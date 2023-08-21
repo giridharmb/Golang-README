@@ -92,6 +92,8 @@
 
 [JWT Authentication And Authorization](#jwt-authentication-and-authorization)
 
+[Create Excel Sheet](#create-excel-sheet)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -6304,5 +6306,140 @@ func main() {
 
     fmt.Println("Server listening on :8080")
     http.ListenAndServe(":8080", nil)
+}
+```
+
+#### [Create Excel Sheet](#create-excel-sheet)
+
+```bash
+go get -v github.com/xuri/excelize
+```
+
+`main.go`
+
+```go
+package main
+
+import (
+    "fmt"
+    "math/rand"
+    "time"
+    "unicode/utf8"
+
+    "github.com/xuri/excelize"
+)
+
+func init() {
+    rand.Seed(time.Now().UnixNano())
+}
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func RandStringRunes(n int) string {
+    b := make([]rune, n)
+    for i := range b {
+        b[i] = letterRunes[rand.Intn(len(letterRunes))]
+    }
+    return string(b)
+}
+
+func main() {
+    f := excelize.NewFile()
+    defer func() {
+        if err := f.Close(); err != nil {
+            fmt.Println(err)
+        }
+    }()
+
+    sheetName := "sheet1"
+
+    // Create a new sheet.
+    mySheet, err := f.NewSheet(sheetName)
+    if err != nil {
+        fmt.Println(err)
+        return
+    }
+
+    totalColumns := 7
+
+    // first set all column names
+    for i := 1; i <= totalColumns; i++ {
+        column := GetCellColumnAndRowName(i, 1)
+        fmt.Printf("\ncolumn : %v", column)
+        colName := fmt.Sprintf("col_%v", i)
+        _ = f.SetCellValue(sheetName, column, colName)
+    }
+
+    totalRows := 10
+    for c := 1; c <= totalColumns; c++ {
+        for r := 2; r <= totalRows; r++ {
+            colAndRowName := GetCellColumnAndRowName(c, r)
+            randomData := RandStringRunes(15)
+            _ = f.SetCellValue("sheet1", colAndRowName, randomData)
+        }
+    }
+
+    // Set value of a cell.
+    /*
+        f.SetCellValue(sheetName", "A", "data_column")
+        f.SetCellValue(sheetName", "B", "value_column")
+
+        f.SetCellValue(sheetName", "A2", "data_C1_1")
+        f.SetCellValue(sheetName", "B2", "data_C2_1")
+
+        f.SetCellValue(sheetName", "A3", "data_C1_2")
+        f.SetCellValue(sheetName", "B3", "data_C2_2")
+    */
+
+    // Set active sheet of the workbook.
+    f.SetActiveSheet(mySheet)
+
+    bottomRightCell := GetCellColumnAndRowName(totalColumns, totalRows)
+    fmt.Printf("\nbottomRightCell : %v", bottomRightCell)
+
+    firstToLastCell := fmt.Sprintf("A1:%v", bottomRightCell)
+    fmt.Printf("\nfirstToLastCell : %v", firstToLastCell)
+    _ = f.AutoFilter(sheetName, firstToLastCell, []excelize.AutoFilterOptions{})
+
+    // Auto-Fit all columns according to their text content
+    cols, err := f.GetCols(sheetName)
+    if err != nil {
+        return
+    }
+    for idx, col := range cols {
+        largestWidth := 0
+        for _, rowCell := range col {
+            cellWidth := utf8.RuneCountInString(rowCell) + 3 // + 2 for margin
+            if cellWidth > largestWidth {
+                largestWidth = cellWidth
+            }
+        }
+        name, err := excelize.ColumnNumberToName(idx + 1)
+        if err != nil {
+            return
+        }
+        _ = f.SetColWidth(sheetName, name, name, float64(largestWidth))
+    }
+
+    // Save spreadsheet by the given path.
+    if err := f.SaveAs("Book1.xlsx"); err != nil {
+        fmt.Println(err)
+    }
+
+    for i := 1; i <= 15; i++ {
+        colName, _ := excelize.ColumnNumberToName(i)
+        fmt.Printf("\ncolNumber : %v , colName : %v", i, colName)
+    }
+}
+
+// GetCellColumnAndRowName
+/*
+columnNumber - starts from 1
+rowNumber - starts from 1
+*/
+func GetCellColumnAndRowName(columnNumber int, rowNumber int) string {
+    colName, _ := excelize.ColumnNumberToName(columnNumber)
+    cell := fmt.Sprintf("%v%v", colName, rowNumber)
+    return cell
 }
 ```

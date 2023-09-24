@@ -94,6 +94,8 @@
 
 [Create Excel Sheet](#create-excel-sheet)
 
+[JSON Lookup Using GJSON](#json-lookup-using-gjson)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -6441,5 +6443,37 @@ func GetCellColumnAndRowName(columnNumber int, rowNumber int) string {
     colName, _ := excelize.ColumnNumberToName(columnNumber)
     cell := fmt.Sprintf("%v%v", colName, rowNumber)
     return cell
+}
+```
+
+#### [JSON Lookup Using GJSON](#json-lookup-using-gjson)
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/tidwall/gjson"
+)
+
+func main() {
+    data := `
+{
+    "name": "John",
+    "address": {
+        "city": "New York",
+        "zip": "10001"
+    }
+}
+`
+    city := gjson.Get(data, "address.city")
+    fmt.Println("City:", city.String())
+
+    // Check if path exists
+    if gjson.Get(data, "address.country").Exists() {
+        fmt.Println("Country exists")
+    } else {
+        fmt.Println("Country does not exist")
+    }
 }
 ```

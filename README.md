@@ -96,9 +96,9 @@
 
 [JSON Lookup Using GJSON](#json-lookup-using-gjson)
 
-[Design Pattern - Singleton](design-pattern-singleton)
+[Design Pattern - Singleton](#design-pattern-singleton)
 
-[Design Pattern - Single Responsibility Principle](design-pattern-single-responsibility-principle)
+[Design Pattern - Single Responsibility Principle](#design-pattern-single-responsibility-principle)
 
 <hr/>
 
@@ -6482,7 +6482,7 @@ func main() {
 }
 ```
 
-#### [Design Pattern - Singleton](design-pattern-singleton)
+#### [Design Pattern - Singleton](#design-pattern-singleton)
 
 Here’s a brief overview of how the code works:
  - The Singleton type represents the object of which there will be only one instance.
@@ -6540,7 +6540,7 @@ func main() {
 }
 ```
 
-#### [Design Pattern - Single Responsibility Principle](design-pattern-single-responsibility-principle)
+#### [Design Pattern - Single Responsibility Principle](#design-pattern-single-responsibility-principle)
 
 The Single Responsibility Principle (SRP) states that a class should have only one reason to change. 
 In other words, it should have only one responsibility. 

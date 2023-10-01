@@ -96,6 +96,10 @@
 
 [JSON Lookup Using GJSON](#json-lookup-using-gjson)
 
+[Design Pattern - Singleton](design-pattern-singleton)
+
+[Design Pattern - Single Responsibility Principle](design-pattern-single-responsibility-principle)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -6477,3 +6481,146 @@ func main() {
     }
 }
 ```
+
+#### [Design Pattern - Singleton](design-pattern-singleton)
+
+Here’s a brief overview of how the code works:
+ - The Singleton type represents the object of which there will be only one instance.
+ - We define a private instance variable to hold the singleton instance and a once variable from the sync package to ensure that the instantiation logic in New only runs once.
+ - The New function is the only way to get an instance of Singleton. The once.Do() function ensures that the passed-in function is executed only once, regardless of how many times New is called.
+ - In the main function, we demonstrate that, even when trying to create two different instances of Singleton, we get the same instance back.
+
+```go
+package main
+
+import (
+    "fmt"
+    "sync"
+)
+
+// Singleton is the struct that we will instantiate only once.
+type Singleton struct {
+    value string
+}
+
+var (
+    // instance holds the singleton object. Initialized as nil by default.
+    instance *Singleton
+
+    // once is used to ensure that the instantiation happens only once.
+    once sync.Once
+)
+
+// GetValue returns the value of the singleton object.
+func (s *Singleton) GetValue() string {
+    return s.value
+}
+
+// New returns an instance of the Singleton object.
+func New(value string) *Singleton {
+    once.Do(func() {
+        instance = &Singleton{value: value}
+    })
+    return instance
+}
+
+func main() {
+    // Create an instance of Singleton
+    s1 := New("Singleton 1")
+    fmt.Println(s1.GetValue()) // Outputs: Singleton 1
+
+    // Try creating another instance of Singleton
+    s2 := New("Singleton 2")
+    fmt.Println(s2.GetValue()) // Outputs: Singleton 1
+
+    // Check if both the instances are the same
+    if s1 == s2 {
+        fmt.Println("Both instances are the same.")
+    }
+}
+```
+
+#### [Design Pattern - Single Responsibility Principle](design-pattern-single-responsibility-principle)
+
+The Single Responsibility Principle (SRP) states that a class should have only one reason to change. 
+In other words, it should have only one responsibility. 
+This can make the code more maintainable, understandable, and testable.
+
+Let’s look at a simple example where we have a User struct and functions 
+that manage user data and also handle saving it to a file.
+
+Violating Single Responsibility Principle:
+
+```go
+package main
+
+import (
+    "fmt"
+    "io/ioutil"
+)
+
+type User struct {
+    Name    string
+    Email   string
+    Address string
+}
+
+func (u *User) SaveToFile(filename string) error {
+    data := fmt.Sprintf("Name: %s\nEmail: %s\nAddress: %s", u.Name, u.Email, u.Address)
+    return ioutil.WriteFile(filename, []byte(data), 0644)
+}
+
+func main() {
+    user := User{
+        Name:    "John Doe",
+        Email:   "johndoe@example.com",
+        Address: "123 Main St",
+    }
+
+    user.SaveToFile("user.txt")
+}
+```
+
+In the code above, the User struct is responsible both for managing user data and for saving it to a file. 
+This is a violation of the SRP.
+
+Following Single Responsibility Principle:
+
+Let’s refactor this:
+
+```go
+package main
+
+import (
+    "fmt"
+    "io/ioutil"
+)
+
+type User struct {
+    Name    string
+    Email   string
+    Address string
+}
+
+type FileManager struct{}
+
+func (fm *FileManager) SaveToFile(u User, filename string) error {
+    data := fmt.Sprintf("Name: %s\nEmail: %s\nAddress: %s", u.Name, u.Email, u.Address)
+    return ioutil.WriteFile(filename, []byte(data), 0644)
+}
+
+func main() {
+    user := User{
+        Name:    "John Doe",
+        Email:   "johndoe@example.com",
+        Address: "123 Main St",
+    }
+
+    fileManager := FileManager{}
+    fileManager.SaveToFile(user, "user.txt")
+}
+```
+
+In the refactored code, the User struct only manages user data. The responsibility of saving the 
+data to a file is now handled by a separate FileManager struct. 
+This ensures that each type has a single responsibility, adhering to the SRP.

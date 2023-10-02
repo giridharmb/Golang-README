@@ -100,6 +100,10 @@
 
 [Design Pattern Single Responsibility Principle](#design-pattern-single-responsibility-principle)
 
+[Design Pattern Open Closed Principle](#design-pattern-open-closed-principle)
+
+[Design Pattern Liskov Substitution Principle](#design-pattern-liskov-substitution-principle)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -6624,3 +6628,163 @@ func main() {
 In the refactored code, the User struct only manages user data. The responsibility of saving the 
 data to a file is now handled by a separate FileManager struct. 
 This ensures that each type has a single responsibility, adhering to the SRP.
+
+#### [Design Pattern Open Closed Principle](#design-pattern-open-closed-principle)
+
+The Open-Closed Principle (OCP) is one of the five SOLID principles of object-oriented design. 
+It states that software entities (classes, modules, functions, etc.) should be open for extension 
+but closed for modification. 
+This means that the behavior of a module can be extended without modifying its source code.
+
+Here’s an example in Go to demonstrate the Open-Closed Principle:
+
+Let’s assume we have a system that filters products based on some criteria. 
+A naive approach without considering OCP might look like this:
+
+```go
+type Color string
+
+const (
+    Red   Color = "Red"
+    Green       = "Green"
+    Blue        = "Blue"
+)
+
+type Product struct {
+    Name  string
+    Color Color
+}
+
+func FilterByColor(products []Product, color Color) []*Product {
+    result := make([]*Product, 0)
+    for _, p := range products {
+        if p.Color == color {
+            result = append(result, &p)
+        }
+    }
+    return result
+}
+```
+
+If we want to add more filters in the future (e.g., by size, by weight), 
+we’ll need to modify the existing code or add more functions, which violates OCP.
+
+A better approach using the OCP:
+
+```go
+type Specification interface {
+    IsSatisfied(p *Product) bool
+}
+
+type ColorSpecification struct {
+    Color Color
+}
+
+func (spec ColorSpecification) IsSatisfied(p *Product) bool {
+    return p.Color == spec.Color
+}
+
+type Filter struct{}
+
+func (f *Filter) Filter(products []Product, spec Specification) []*Product {
+    result := make([]*Product, 0)
+    for _, p := range products {
+        if spec.IsSatisfied(&p) {
+            result = append(result, &p)
+        }
+    }
+    return result
+}
+```
+
+Now, if we want to add more filters, we can simply implement the Specification interface without modifying the existing code:
+
+```go
+type Size string
+
+const (
+    Small Size = "Small"
+    Medium    = "Medium"
+    Large     = "Large"
+)
+
+type SizeSpecification struct {
+    Size Size
+}
+
+func (spec SizeSpecification) IsSatisfied(p *Product) bool {
+    return p.Size == spec.Size
+}
+```
+
+By adhering to the OCP, we can easily extend our filtering mechanism without changing the 
+existing filter logic or structures. 
+This makes our code more maintainable and adaptable to future changes.
+
+
+#### [Design Pattern Liskov Substitution Principle](#design-pattern-liskov-substitution-principle)
+
+The Liskov Substitution Principle (LSP) is one of the SOLID principles and states that 
+objects of a superclass should be able to be replaced with objects of a subclass 
+without affecting the correctness of the program. 
+
+Essentially, it means that a derived class should extend the behavior of a base class without changing its intended behavior.
+
+Here’s an example in Go that demonstrates the Liskov Substitution Principle:
+
+Let’s take a geometric example of rectangles and squares. 
+A naive representation might have Square inherit from Rectangle and override methods, but this can violate LSP.
+
+```go
+type Rectangle struct {
+    width, height int
+}
+
+func (r *Rectangle) SetWidth(w int) {
+    r.width = w
+}
+
+func (r *Rectangle) SetHeight(h int) {
+    r.height = h
+}
+
+func (r *Rectangle) Area() int {
+    return r.width * r.height
+}
+
+type Square struct {
+    Rectangle
+}
+
+func (s *Square) SetWidth(w int) {
+    s.width = w
+    s.height = w
+}
+
+func (s *Square) SetHeight(h int) {
+    s.width = h
+    s.height = h
+}
+```
+
+Now, imagine you have a function like this:
+
+```go
+func IncreaseRectangleWidth(r *Rectangle) {
+    width := r.width
+    r.SetWidth(width + 10)
+    
+    // After increasing the width, the area should also increase
+    if r.Area() <= width* r.height {
+        fmt.Println("Violates Liskov Substitution Principle!")
+    }
+}
+```
+
+If you pass a Square to this function, it would print "Violates Liskov Substitution Principle!"
+because setting the width on a square changes its height too, 
+which breaks the expected behavior of the IncreaseRectangleWidth function.
+
+A better approach would be to not have Square inherit from Rectangle, 
+but rather have both implement a common interface or find a 
+different inheritance hierarchy that doesn’t violate LSP.

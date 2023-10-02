@@ -104,6 +104,8 @@
 
 [Design Pattern Liskov Substitution Principle](#design-pattern-liskov-substitution-principle)
 
+[Design Pattern Interface Segregation Principle](#design-pattern-interface-segregation-principle)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -6788,3 +6790,75 @@ which breaks the expected behavior of the IncreaseRectangleWidth function.
 A better approach would be to not have Square inherit from Rectangle, 
 but rather have both implement a common interface or find a 
 different inheritance hierarchy that doesn’t violate LSP.
+
+#### [Design Pattern Interface Segregation Principle](#design-pattern-interface-segregation-principle)
+
+The Interface Segregation Principle (ISP) states that no client should be forced to 
+depend on interfaces it doesn’t use. Essentially, it’s better to have several 
+specific interfaces rather than one general-purpose, “do-it-all” interface.
+
+Let’s go through a Go example.
+
+Suppose you have a basic document struct and you want to implement functionalities to persist it, print it, and send it.
+
+A naive approach might be to create a large interface with all those functionalities:
+
+```go
+type Document struct {
+    Title string
+    Body  string
+}
+
+type DocumentManager interface {
+    Save(d Document) error
+    Print(d Document)
+    Send(d Document)
+}
+```
+
+However, not all document operations would need all those methods. 
+For example, a Printer doesn’t need to send or save a document. 
+It only needs to print it. Here’s where the ISP comes into play.
+
+Instead of the above, we can have:
+
+```go
+type Saver interface {
+    Save(d Document) error
+}
+
+type Printer interface {
+    Print(d Document)
+}
+
+type Sender interface {
+    Send(d Document)
+}
+```
+
+Now, you can implement and compose as per your needs:
+
+```go
+type FileSaver struct{}
+
+func (fs FileSaver) Save(d Document) error {
+    // logic to save the document
+    return nil
+}
+
+type ConsolePrinter struct{}
+
+func (cp ConsolePrinter) Print(d Document) {
+    fmt.Println("Printing:", d.Title)
+}
+
+type EmailSender struct{}
+
+func (es EmailSender) Send(d Document) {
+    // logic to send the document via email
+}
+```
+
+With this approach, if a component only needs to save documents, it can depend only on the Saver interface. 
+Similarly, something that just prints would only require an implementation of the Printer interface. 
+This way, we’re not forcing a class to implement methods it doesn’t need.

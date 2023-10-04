@@ -106,6 +106,8 @@
 
 [Design Pattern Interface Segregation Principle](#design-pattern-interface-segregation-principle)
 
+[HTTP Request With Context Timeout](#http-request-with-context-timeout)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -6862,3 +6864,42 @@ func (es EmailSender) Send(d Document) {
 With this approach, if a component only needs to save documents, it can depend only on the Saver interface. 
 Similarly, something that just prints would only require an implementation of the Printer interface. 
 This way, we’re not forcing a class to implement methods it doesn’t need.
+
+#### [HTTP Request With Context Timeout](#http-request-with-context-timeout)
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "net/http"
+    "time"
+)
+
+func main() {
+    // Create a new context with a timeout of 2 seconds
+    ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+    defer cancel()
+
+    // Create a new request
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://example.com", nil)
+    if err != nil {
+        panic(err)
+    }
+
+    // Send the request using the default HTTP client
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil {
+        // If the context was canceled (timed out), this will print a context-related error
+        fmt.Println("Error:", err)
+        return
+    }
+    defer resp.Body.Close()
+
+    fmt.Println("Response status:", resp.Status)
+}
+```
+
+In this example, if the HTTP request takes longer than 2 seconds, the request will be canceled and you’ll see a context-related error printed. Otherwise, you’ll see the response status from the request.
+

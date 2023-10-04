@@ -6903,3 +6903,60 @@ func main() {
 
 In this example, if the HTTP request takes longer than 2 seconds, the request will be canceled and you’ll see a context-related error printed. Otherwise, you’ll see the response status from the request.
 
+#### TCP Connection With Context Timeout
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "net"
+    "time"
+)
+
+func main() {
+    // Address of the server to connect to
+    address := "example.com:80" // Replace with the address of your server
+
+    // Create a new context with a timeout of 5 seconds
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    // Use a goroutine to try and establish the TCP connection
+    var conn net.Conn
+    ch := make(chan struct{})
+
+    go func() {
+        var err error
+        conn, err = net.Dial("tcp", address)
+        if err != nil {
+            fmt.Println("Error:", err)
+            close(ch)
+            return
+        }
+        ch <- struct{}{}
+    }()
+
+    // Wait for either the connection to be established or the timeout to be exceeded
+    select {
+    case <-ch:
+        fmt.Println("Connection established")
+    case <-ctx.Done():
+        fmt.Println("Failed to connect before timeout:", ctx.Err())
+        return
+    }
+
+    // Do something with the connection...
+    // ...
+
+    // Close the connection when you're done
+    conn.Close()
+}
+```
+
+In this example, the program will attempt to establish a TCP connection to example.com on port 80. 
+If the connection is not established within 5 seconds, the context will time out and an error message will be printed. 
+If the connection is successfully established within the 5-second window, you’ll see a “Connection established” message.
+
+Remember to replace example.com:80 with the address and port of the server you’re trying to connect to.

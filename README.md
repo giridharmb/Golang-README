@@ -108,6 +108,8 @@
 
 [HTTP Request With Context Timeout](#http-request-with-context-timeout)
 
+[Run Multiple Functions Periodically](#run-multiple-functions-periodically)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -6960,3 +6962,76 @@ If the connection is not established within 5 seconds, the context will time out
 If the connection is successfully established within the 5-second window, you’ll see a “Connection established” message.
 
 Remember to replace example.com:80 with the address and port of the server you’re trying to connect to.
+
+#### [Run Multiple Functions Periodically](#run-multiple-functions-periodically)
+
+```go
+package main
+
+import (
+    "fmt"
+    "time"
+)
+
+func main() {
+    // Ticker to run a function every 60 seconds
+    ticker60s := time.NewTicker(60 * time.Second)
+    go func() {
+        for range ticker60s.C {
+            function60s()
+        }
+    }()
+
+    // Ticker to run a function every 30 seconds
+    ticker30s := time.NewTicker(30 * time.Second)
+    go func() {
+        for range ticker30s.C {
+            function30s()
+        }
+    }()
+
+    // Prevent the main function from exiting
+    select {}
+}
+
+func function60s() {
+    fmt.Println("Running the 60-second function:", time.Now())
+}
+
+func function30s() {
+    fmt.Println("Running the 30-second function:", time.Now())
+}
+```
+
+Another Way
+
+```go
+package main
+
+import (
+    "fmt"
+    "time"
+)
+
+func main() {
+    ticker60s := time.NewTicker(60 * time.Second)
+    ticker30s := time.NewTicker(30 * time.Second)
+
+    for {
+        select {
+        case <-ticker60s.C:
+            function60s()
+        case <-ticker30s.C:
+            function30s()
+        }
+    }
+}
+
+func function60s() {
+    fmt.Println("Running the 60-second function:", time.Now())
+}
+
+func function30s() {
+    fmt.Println("Running the 30-second function:", time.Now())
+}
+```

@@ -110,6 +110,8 @@
 
 [Run Multiple Functions Periodically](#run-multiple-functions-periodically)
 
+[Make HTTP GET Request With Headers](#make-http-get-request-with-headers)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -7033,5 +7035,58 @@ func function60s() {
 
 func function30s() {
     fmt.Println("Running the 30-second function:", time.Now())
+}
+```
+
+#### [Make HTTP GET Request With Headers](#make-http-get-request-with-headers)
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "io/ioutil"
+    "log"
+    "net/http"
+)
+
+func main() {
+    // The endpoint you want to request
+    url := "https://api.example.com/data"
+
+    // Create a new request using http
+    req, err := http.NewRequest("GET", url, nil)
+    if err != nil {
+        log.Fatal("NewRequest: ", err)
+        return
+    }
+
+    // Add headers to the request
+    req.Header.Add("Authorization", "Bearer YOUR_TOKEN")
+    req.Header.Add("Another-Header", "header-value")
+
+    // Send the request using http client
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        log.Fatal("Do: ", err)
+        return
+    }
+    defer resp.Body.Close()
+
+    // Read the JSON response body
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        log.Fatal("ReadAll: ", err)
+        return
+    }
+
+    // Define a struct to unmarshal the JSON response into
+    var data map[string]interface{}
+    json.Unmarshal(body, &data)
+
+    // Print the data
+    fmt.Printf("%+v\n", data)
 }
 ```

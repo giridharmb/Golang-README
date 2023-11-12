@@ -112,6 +112,8 @@
 
 [Make HTTP GET Request With Headers](#make-http-get-request-with-headers)
 
+[Get Azure Subscription Name](#get-azure-subscription-name)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -7088,5 +7090,69 @@ func main() {
 
     // Print the data
     fmt.Printf("%+v\n", data)
+}
+```
+
+#### [Get Azure Subscription Name](#get-azure-subscription-name)
+
+```go
+import (
+    "context"
+    "fmt"
+    "github.com/Azure/azure-sdk-for-go/services/resources/mgmt/2018-06-01/subscriptions"
+    "github.com/Azure/go-autorest/autorest"
+    "github.com/Azure/go-autorest/autorest/azure/auth"
+    "log"
+    "os"
+)
+
+func GetClientCredentialsConfig(azureTenantID string, azureClientID string, azureClientSecret string) auth.ClientCredentialsConfig {
+    clientCredentialsConfig := auth.NewClientCredentialsConfig(azureClientID, azureClientSecret, azureTenantID)
+    return clientCredentialsConfig
+}
+
+func GetAuthorizer(clientCredentialsConfig auth.ClientCredentialsConfig) (autorest.Authorizer, error) {
+    authorizer, err := clientCredentialsConfig.Authorizer()
+    if err != nil {
+        return nil, err
+    }
+    return authorizer, nil
+}
+
+func GetSubscriptionName(subscriptionID string, clientCredentialsConfig auth.ClientCredentialsConfig) (string, error) {
+    authorizer, err := GetAuthorizer(clientCredentialsConfig)
+    if err != nil {
+        return "", err
+    }
+    subscriptionsClient := GetSubscriptionClient(authorizer)
+    ctx := context.Background()
+    subscription, err := subscriptionsClient.Get(ctx, subscriptionID)
+    if err != nil {
+        return "", err
+    }
+    return string(*subscription.DisplayName), nil
+}
+
+func GetSubscriptionClient(authorizer autorest.Authorizer) subscriptions.Client {
+    subscriptionsClient := subscriptions.NewClient()
+    subscriptionsClient.Authorizer = authorizer
+    return subscriptionsClient
+}
+
+func main() {
+    subscriptionID := "12345-1111-2222-3333-000000000000"
+
+    azureTenantID := os.Getenv("AZURE_TENANT_ID")
+    azureClientID := os.Getenv("AZURE_CLIENT_ID")
+    azureClientSecret := os.Getenv("AZURE_CLIENT_SECRET")
+
+    clientCredentialsConfig := GetClientCredentialsConfig(azureTenantID, azureClientID, azureClientSecret)
+
+    subscriptionName, err := GetSubscriptionName(subscriptionID, clientCredentialsConfig)
+    if err != nil {
+        log.Fatalf(err.Error())
+    }
+
+    fmt.Printf("Subscription Name: %s\n", subscriptionName)
 }
 ```

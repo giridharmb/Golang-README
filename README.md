@@ -7139,6 +7139,23 @@ func GetSubscriptionClient(authorizer autorest.Authorizer) subscriptions.Client 
     return subscriptionsClient
 }
 
+func GetAllAzureSubscriptions(authorizer autorest.Authorizer) (map[string]string, error) {
+    subscriptionsMapping := make(map[string]string)
+    subscriptionClient := GetSubscriptionClient(authorizer)
+    ctx := context.Background()
+    for list, err := subscriptionClient.List(ctx); list.NotDone(); err = list.NextWithContext(ctx) {
+        if err != nil {
+            return subscriptionsMapping, err
+        }
+        for _, subscription := range list.Values() {
+            subID := string(*subscription.ID)
+            subName := string(*subscription.DisplayName)
+            subscriptionsMapping[subID] = subName
+        }
+    }
+    return subscriptionsMapping, nil
+}
+
 func main() {
     subscriptionID := "12345-1111-2222-3333-000000000000"
 
@@ -7154,5 +7171,19 @@ func main() {
     }
 
     fmt.Printf("Subscription Name: %s\n", subscriptionName)
+
+    /* ************************************************************************************ */
+
+    authorizer, err := GetAuthorizer(clientCredentialsConfig)
+    if err != nil {
+        log.Fatal(err.Error())
+    }
+
+    subscriptionsMapping, err := GetAllAzureSubscriptions(authorizer)
+    if err != nil {
+        log.Fatal(err.Error())
+    }
+    fmt.Printf("\n\nSubscriptions-Mapping:\n\n%v\n\n", subscriptionsMapping)
+
 }
 ```

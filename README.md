@@ -114,6 +114,8 @@
 
 [Get Azure Subscription Name](#get-azure-subscription-name)
 
+[Logrus Logging](#logrus-logging)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -7185,5 +7187,85 @@ func main() {
     }
     fmt.Printf("\n\nSubscriptions-Mapping:\n\n%v\n\n", subscriptionsMapping)
 
+}
+```
+
+#### [Logrus Logging](#logrus-logging)
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "errors"
+    "fmt"
+    "github.com/sirupsen/logrus"
+    logsyslog "github.com/sirupsen/logrus/hooks/syslog"
+    "log/syslog"
+    "os"
+)
+
+var Log = logrus.New()
+
+func InitLogging() {
+    Log.SetOutput(os.Stdout)
+    Log.SetLevel(logrus.DebugLevel)
+    hook, err := logsyslog.NewSyslogHook("", "", syslog.LOG_DEBUG, "")
+    if err == nil {
+        Log.Hooks.Add(hook)
+    }
+}
+
+func main() {
+    InitLogging()
+
+    data := map[string]interface{}{
+        "name": "John Doe",
+        "age":  30,
+        "address": map[string]string{
+            "city":    "New York",
+            "country": "USA",
+        },
+    }
+
+    dataStr, _ := GetJsonStr(data)
+    Log.Printf("dataStr : %v", dataStr)
+
+    myMap, _ := GetJsonMap(dataStr)
+    Log.Printf("myMap : %v", myMap)
+
+    PrettyPrintJson(data)
+}
+
+func GetJsonMap(jsonStr string) (map[string]interface{}, error) {
+    msg := ""
+    result := make(map[string]interface{})
+    err := json.Unmarshal([]byte(jsonStr), &result)
+    if err != nil {
+        msg = fmt.Sprintf("could not convert json string to map[string]interface{} : %v", err.Error())
+        Log.Error(msg)
+        return nil, errors.New(msg)
+    }
+    return result, nil
+}
+
+func GetJsonStr(jsonMap map[string]interface{}) (string, error) {
+    msg := ""
+    jsonString, err := json.Marshal(jsonMap)
+    if err != nil {
+        msg = fmt.Sprintf("could not convert map[string]interface{} to string : %v", err.Error())
+        Log.Error(msg)
+        return "", errors.New(msg)
+    }
+    return string(jsonString), nil
+}
+
+func PrettyPrintJson(data map[string]interface{}) {
+    prettyJson, err := json.MarshalIndent(data, "", "    ")
+    if err != nil {
+        Log.Errorf("could not json.MarshalIndent the specified map[string]interface{} : %v", err.Error())
+        return
+    }
+    Log.Printf("\n\n%s\n\n", prettyJson)
 }
 ```

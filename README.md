@@ -116,6 +116,8 @@
 
 [Logrus Logging](#logrus-logging)
 
+[WebSocket Server And Client](#websocker-server-and-client)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -7268,4 +7270,113 @@ func PrettyPrintJson(data map[string]interface{}) {
     }
     Log.Printf("\n\n%s\n\n", prettyJson)
 }
+```
+
+#### [WebSocket Server And Client](#websocker-server-and-client)
+
+`main.go`
+
+```go
+package main
+
+import (
+    "encoding/json"
+    "log"
+    "net/http"
+    "github.com/gorilla/websocket"
+)
+
+var upgrader = websocket.Upgrader{
+    ReadBufferSize:  1024,
+    WriteBufferSize: 1024,
+}
+
+type Message struct {
+    Text string `json:"text"`
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    conn, err := upgrader.Upgrade(w, r, nil)
+    if err != nil {
+        log.Println(err)
+        return
+    }
+    defer conn.Close()
+
+    for {
+        _, msgBytes, err := conn.ReadMessage()
+        if err != nil {
+            log.Println(err)
+            return
+        }
+
+        var msg Message
+        err = json.Unmarshal(msgBytes, &msg)
+        if err != nil {
+            log.Println("error unmarshalling:", err)
+            continue
+        }
+
+        log.Printf("Received: %s\n", msg.Text)
+
+        response := Message{Text: "Received: " + msg.Text}
+        responseBytes, err := json.Marshal(response)
+        if err != nil {
+            log.Println("error marshalling:", err)
+            continue
+        }
+
+        if err := conn.WriteMessage(websocket.TextMessage, responseBytes); err != nil {
+            log.Println(err)
+            return
+        }
+    }
+}
+
+func main() {
+    http.HandleFunc("/echo", handler)
+    log.Fatal(http.ListenAndServe(":8080", nil))
+}
+```
+
+`index.html`
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Test</title>
+    <script type="text/javascript">
+        var conn;
+
+        function init() {
+            conn = new WebSocket('ws://localhost:8080/echo');
+
+            conn.onopen = function(e) {
+                console.log("Connection established!");
+            };
+
+            conn.onmessage = function(e) {
+                var serverMessage = JSON.parse(e.data);
+                console.log(serverMessage);
+                document.getElementById('serverResponse').innerText = serverMessage.text;
+            };
+
+            conn.onerror = function(e) {
+                console.log("Error: ", e);
+            };
+        }
+
+        function sendMessage() {
+            var message = document.getElementById('message').value;
+            conn.send(JSON.stringify({text: message}));
+        }
+    </script>
+</head>
+<body onload="init();">
+    <input type="text" id="message" placeholder="Enter a message"/>
+    <button onclick="sendMessage();">Send Message</button>
+    <p>Server response: <span id="serverResponse"></span></p>
+</body>
+</html>
 ```

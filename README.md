@@ -7380,3 +7380,54 @@ func main() {
 </body>
 </html>
 ```
+
+Autmatically Reconnect WebSocket
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebSocket Reconnection</title>
+    <script type="text/javascript">
+        var conn;
+        var reconnectInterval = 3000; // Reconnect attempt interval in milliseconds
+
+        function connectWebSocket() {
+            conn = new WebSocket('ws://localhost:8080/echo');
+
+            conn.onopen = function(e) {
+                console.log("Connection established!");
+            };
+
+            conn.onmessage = function(e) {
+                console.log("Received: " + e.data);
+                document.getElementById('serverResponse').innerText = e.data;
+            };
+
+            conn.onerror = function(e) {
+                console.error("WebSocket error observed:", e);
+            };
+
+            conn.onclose = function(e) {
+                console.log("WebSocket connection closed. Attempting to reconnect...");
+                setTimeout(connectWebSocket, reconnectInterval);
+            };
+        }
+
+        function sendMessage() {
+            if (conn.readyState === WebSocket.OPEN) {
+                var message = document.getElementById('message').value;
+                conn.send(message);
+            } else {
+                console.log("WebSocket is not open. Cannot send message.");
+            }
+        }
+    </script>
+</head>
+<body onload="connectWebSocket();">
+    <input type="text" id="message" placeholder="Enter a message"/>
+    <button onclick="sendMessage();">Send Message</button>
+    <p>Server response: <span id="serverResponse"></span></p>
+</body>
+</html>
+```

@@ -118,6 +118,8 @@
 
 [WebSocket Server And Client](#websocker-server-and-client)
 
+[Azure Redis](#azure-redis)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -7430,4 +7432,70 @@ Autmatically Reconnect WebSocket
     <p>Server response: <span id="serverResponse"></span></p>
 </body>
 </html>
+```
+
+#### [Azure Redis](#azure-redis)
+
+```go
+package main
+
+import (
+    "context"
+    "crypto/tls"
+    "fmt"
+    redis "github.com/redis/go-redis/v9"
+    "log"
+)
+
+func main() {
+    // Replace these values with your Azure Redis Cache connection details
+    // Port 6380 -> SSL Port For Azure Redis
+
+    redisAddr := "<HOST>:6380"
+    redisPassword := "<REDIS_KEY>" // fetch this from azure
+
+    tlsConfig := &tls.Config{
+        InsecureSkipVerify: true, // Set this to false in production
+    }
+
+    // Create a Redis client
+    client := redis.NewClient(&redis.Options{
+        Addr:      redisAddr,
+        Password:  redisPassword,
+        TLSConfig: tlsConfig,
+    })
+
+    ctx := context.Background()
+
+    // Ping the Redis server to test the connection
+    pong, err := client.Ping(ctx).Result()
+    if err != nil {
+        log.Fatalf("Failed to ping Redis: %v", err)
+    }
+    fmt.Println("Redis Ping:", pong)
+
+    // Set a key-value pair
+
+    for i := 0; i < 100; i++ {
+        err = client.Set(ctx, "mykey", "myvalue", 0).Err()
+        if err != nil {
+            log.Fatalf("Failed to set key: %v", err)
+        }
+        log.Println("wrote cache...")
+    }
+
+    for i := 0; i < 100; i++ {
+        val, err := client.Get(ctx, "mykey").Result()
+        if err != nil {
+            log.Fatalf("Failed to get key: %v", err)
+        }
+        fmt.Println("mykey:", val)
+    }
+    
+    // Close the Redis client when done
+    err = client.Close()
+    if err != nil {
+        log.Fatalf("Failed to close Redis client: %v", err)
+    }
+}
 ```

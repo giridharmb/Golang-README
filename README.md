@@ -120,6 +120,8 @@
 
 [Azure Redis](#azure-redis)
 
+[PostgreSQL Locks](#postgresql-locks)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -7496,6 +7498,62 @@ func main() {
     err = client.Close()
     if err != nil {
         log.Fatalf("Failed to close Redis client: %v", err)
+    }
+}
+```
+
+#### [PostgreSQL Locks](#postgresql-locks)
+
+```go
+package main
+
+import (
+    "gorm.io/driver/postgres"
+    "gorm.io/gorm"
+    "log"
+)
+
+var db *gorm.DB
+
+func init() {
+    var err error
+    // Replace with your database details
+    dsn := "host=HOSTNAME user=USERNAME password=PASS dbname=POSTGRES_DB port=5432 sslmode=disable"
+    db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+    if err != nil {
+        log.Fatal("Failed to connect to database:", err)
+    }
+
+}
+
+// TryLock attempts to acquire an advisory lock and returns true if successful
+func TryLock(lockKey int64) bool {
+    var locked bool
+    db.Raw("SELECT pg_try_advisory_lock(?)", lockKey).Scan(&locked)
+    return locked
+}
+
+// Unlock releases the advisory lock
+func Unlock(lockKey int64) bool {
+    var unlocked bool
+    db.Raw("SELECT pg_advisory_unlock(?)", lockKey).Scan(&unlocked)
+    return unlocked
+}
+
+func main() {
+    lockKey := int64(123) // This is an arbitrary key for the lock
+
+    if TryLock(lockKey) {
+        log.Println("Lock acquired, performing task")
+        // Perform your task here
+
+        if Unlock(lockKey) {
+            log.Println("Lock released")
+        } else {
+            log.Println("Failed to release lock")
+        }
+    } else {
+        log.Println("Could not acquire lock, another instance may be running")
     }
 }
 ```

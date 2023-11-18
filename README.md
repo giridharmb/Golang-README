@@ -122,6 +122,8 @@
 
 [PostgreSQL Locks](#postgresql-locks)
 
+[Convert UUID To int64](#convert-uuid-to-int64)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -7555,5 +7557,66 @@ func main() {
     } else {
         log.Println("Could not acquire lock, another instance may be running")
     }
+}
+```
+
+#### [Convert UUID To int64](#convert-uuid-to-int64)
+
+In this code:
+
+ - We generate a UUID.
+ - We compute the SHA-256 hash of the UUID.
+ - We take the first 8 bytes of the hash and convert them to an int64.
+ - We then convert the int64 to float64 and use math.Abs to ensure the value is positive.
+
+Converting a UUID to a unique int64 in Go is challenging because a UUID is a 128-bit number, 
+and an int64 can only hold 64 bits. This means you can’t directly convert a 
+UUID to int64 without losing information, which could compromise the uniqueness of the UUID.
+
+However, if your use case can tolerate potential collisions and you just need 
+a “mostly unique” 64-bit representation of a UUID, you could hash the UUID and 
+take a 64-bit portion of it. This approach does not guarantee uniqueness 
+but might be sufficient for certain non-critical applications.
+
+Caveats and Considerations
+
+ - Loss of Uniqueness: This method does not preserve the uniqueness of the original UUID. Collisions are more likely.
+ - Not Suitable for Security Purposes: The resulting int64 should not be used for security-critical purposes.
+ - Use Cases: This method is suitable for scenarios where you need a shorter identifier and can tolerate the risk of collision, such as internal identifiers, hash keys, etc.
+
+Remember, if your application critically relies on the uniqueness of each identifier, it’s better to stick with the full UUID or use another method that guarantees 64-bit uniqueness.
+
+```go
+package main
+
+import (
+    "crypto/sha256"
+    "encoding/binary"
+    "fmt"
+    "log"
+    "math"
+
+    "github.com/google/uuid"
+)
+
+func uuidToInt64(u uuid.UUID) int64 {
+    // Hash the UUID
+    hash := sha256.Sum256(u[:])
+
+    // Convert the first 8 bytes of the hash to int64
+    int64Value := int64(binary.BigEndian.Uint64(hash[:8]))
+    positiveInt64Value := math.Abs(float64(int64Value))
+    return int64(positiveInt64Value)
+}
+
+func main() {
+    u, err := uuid.NewRandom()
+    if err != nil {
+        log.Fatalf("Failed to generate UUID: %v", err)
+    }
+
+    fmt.Println("UUID:", u)
+    intVal := uuidToInt64(u)
+    fmt.Println("int64:", intVal)
 }
 ```

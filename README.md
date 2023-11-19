@@ -7634,11 +7634,12 @@ import (
     "gorm.io/gorm"
     "gorm.io/gorm/clause"
     "log"
+    "os"
     "sync"
     "time"
 )
 
-var db *gorm.DB
+var LockDB *gorm.DB
 
 type PGLock struct {
     LockKey int64
@@ -7657,7 +7658,7 @@ func (l CustomLock) AcquireLock() (bool, error) {
     lock := CustomLock{Key: l.Key}
 
     // Check if the lock is already acquired
-    result := db.Where("key = ?", l.Key).First(&lock)
+    result := LockDB.Where("key = ?", l.Key).First(&lock)
     if result.Error == nil {
         if lock.Acquired {
             return false, nil // Lock is already acquired
@@ -7671,12 +7672,12 @@ func (l CustomLock) AcquireLock() (bool, error) {
     log.Printf("Lock Acquired At         : %v", lock.AcquiredAt)
     log.Printf("Lock Acquired At (EPOCH) : %v", lock.AcquiredAtEpoch)
 
-    return db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&lock).RowsAffected > 0, nil
+    return LockDB.Clauses(clause.OnConflict{UpdateAll: true}).Create(&lock).RowsAffected > 0, nil
 }
 
 func (l CustomLock) IsLockAcquired() (bool, error) {
     var lock CustomLock
-    result := db.Where("key = ?", l.Key).First(&lock)
+    result := LockDB.Where("key = ?", l.Key).First(&lock)
     if result.Error != nil {
         if errors.Is(result.Error, gorm.ErrRecordNotFound) {
             return false, nil // Lock not found, so it's not acquired
@@ -7687,20 +7688,20 @@ func (l CustomLock) IsLockAcquired() (bool, error) {
 }
 
 func (l CustomLock) ReleaseLock() (bool, error) {
-    result := db.Model(&CustomLock{}).Where("key = ?", l.Key).Update("acquired", false)
+    result := LockDB.Model(&CustomLock{}).Where("key = ?", l.Key).Update("acquired", false)
     return result.RowsAffected > 0, result.Error
 }
 
 func InitializeLockDB() {
     var err error
     dsn := "host=HOST_OR_IP user=USER password=PASS dbname=lock_database port=5432 sslmode=disable"
-    db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+    LockDB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
     if err != nil {
         panic("failed to connect database")
     }
 
     // Migrate the schema
-    err = db.AutoMigrate(&CustomLock{})
+    err = LockDB.AutoMigrate(&CustomLock{})
     if err != nil {
         log.Println("database auto_migrate failed : ", err.Error())
     } else {
@@ -7723,12 +7724,13 @@ func CleanupOldLocks(olderThanEpoch int64) (int64, error) {
     //result := db.Unscoped().Where("acquired = ? AND acquired_at_epoch < ?", true, threshold).Delete(&CustomLock{})
 
     // use case-2
-    result := db.Unscoped().Where("acquired_at_epoch < ?", threshold).Delete(&CustomLock{})
+    result := LockDB.Unscoped().Where("acquired_at_epoch < ?", threshold).Delete(&CustomLock{})
 
     return result.RowsAffected, result.Error
 }
 
 func main() {
+
     InitializeLockDB()
 
     lock1 := CustomLock{Key: "test1"}
@@ -7740,7 +7742,7 @@ func main() {
     go func() {
         for {
             elapsed := time.Since(start).Seconds()
-            if elapsed >= 120 {
+            if elapsed >= 60 {
                 // after 1 minute, exit the program
                 done <- true
             }
@@ -7818,6 +7820,7 @@ func main() {
 
     <-done
 }
+
 
 /*
 

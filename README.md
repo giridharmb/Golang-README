@@ -124,6 +124,8 @@
 
 [Convert UUID To int64](#convert-uuid-to-int64)
 
+[PostgreSQL Custom Locks Using GORM](#postgresql-custom-locks-using-gorm)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -7619,4 +7621,213 @@ func main() {
     intVal := uuidToInt64(u)
     fmt.Println("int64:", intVal)
 }
+```
+
+#### [PostgreSQL Custom Locks Using GORM](#postgresql-custom-locks-using-gorm)
+
+```go
+package main
+
+import (
+    "errors"
+    "gorm.io/driver/postgres"
+    "gorm.io/gorm"
+    "gorm.io/gorm/clause"
+    "log"
+    "sync"
+    "time"
+)
+
+var db *gorm.DB
+
+type PGLock struct {
+    LockKey int64
+    Mutex   sync.Mutex
+}
+
+type CustomLock struct {
+    gorm.Model
+    Key             string `gorm:"uniqueIndex"`
+    Acquired        bool
+    AcquiredAt      time.Time
+    AcquiredAtEpoch int64
+}
+
+func (l CustomLock) AcquireLock() (bool, error) {
+    lock := CustomLock{Key: l.Key}
+
+    // Check if the lock is already acquired
+    result := db.Where("key = ?", l.Key).First(&lock)
+    if result.Error == nil {
+        if lock.Acquired {
+            return false, nil // Lock is already acquired
+        }
+    }
+
+    // Acquire the lock
+    lock.Acquired = true
+    lock.AcquiredAt = time.Now().UTC()
+    lock.AcquiredAtEpoch = time.Now().UTC().Unix()
+    log.Printf("Lock Acquired At         : %v", lock.AcquiredAt)
+    log.Printf("Lock Acquired At (EPOCH) : %v", lock.AcquiredAtEpoch)
+
+    return db.Clauses(clause.OnConflict{UpdateAll: true}).Create(&lock).RowsAffected > 0, nil
+}
+
+func (l CustomLock) IsLockAcquired() (bool, error) {
+    var lock CustomLock
+    result := db.Where("key = ?", l.Key).First(&lock)
+    if result.Error != nil {
+        if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+            return false, nil // Lock not found, so it's not acquired
+        }
+        return false, result.Error
+    }
+    return lock.Acquired, nil
+}
+
+func (l CustomLock) ReleaseLock() (bool, error) {
+    result := db.Model(&CustomLock{}).Where("key = ?", l.Key).Update("acquired", false)
+    return result.RowsAffected > 0, result.Error
+}
+
+func InitializeLockDB() {
+    var err error
+    dsn := "host=HOST_OR_IP user=USER password=PASS dbname=lock_database port=5432 sslmode=disable"
+    db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+    if err != nil {
+        panic("failed to connect database")
+    }
+
+    // Migrate the schema
+    err = db.AutoMigrate(&CustomLock{})
+    if err != nil {
+        log.Println("database auto_migrate failed : ", err.Error())
+    } else {
+        log.Println("database auto_migrate successful")
+    }
+}
+
+func CleanupOldLocks(olderThanEpoch int64) (int64, error) {
+    // Calculate the time threshold
+
+    threshold := time.Unix(olderThanEpoch, 0).Unix()
+    log.Println("threshold : %", threshold)
+
+    // Delete locks that are older than the threshold
+
+    // Unscoped() -> is hard delete
+    // Otherwise, if we remove Unscoped() , it will be SOFT DELETE (where deleted_at field will have a timestamp)
+
+    // use case-1
+    //result := db.Unscoped().Where("acquired = ? AND acquired_at_epoch < ?", true, threshold).Delete(&CustomLock{})
+
+    // use case-2
+    result := db.Unscoped().Where("acquired_at_epoch < ?", threshold).Delete(&CustomLock{})
+
+    return result.RowsAffected, result.Error
+}
+
+func main() {
+    InitializeLockDB()
+
+    lock1 := CustomLock{Key: "test1"}
+
+    done := make(chan bool)
+
+    start := time.Now().UTC()
+
+    go func() {
+        for {
+            elapsed := time.Since(start).Seconds()
+            if elapsed >= 120 {
+                // after 1 minute, exit the program
+                done <- true
+            }
+            time.Sleep(1 * time.Second)
+        }
+    }()
+
+    // Set up a ticker to clean up old locks every minute
+    ticker := time.NewTicker(60 * time.Second)
+    go func() {
+        for range ticker.C {
+            sixtySecondsAgo := time.Now().UTC().Add(-60 * time.Second).Unix()
+            cleaned, err := CleanupOldLocks(sixtySecondsAgo)
+            if err != nil {
+                log.Printf("Error cleaning up old locks: %v\n", err)
+            } else if cleaned > 0 {
+                log.Printf("Cleaned up %d old locks\n", cleaned)
+            }
+        }
+    }()
+
+    //key := "my_lock_key"
+
+    // Try to acquire the lock
+
+    acquired, err := lock1.AcquireLock()
+    if err != nil {
+        log.Println("failed to acquire lock : ", err.Error())
+        return
+    }
+    if acquired {
+        println("Lock acquired >>>")
+    } else {
+        println("Could not acquire lock")
+    }
+
+    lockCheck, err := lock1.IsLockAcquired()
+    if err != nil {
+        log.Println("failed to check lock : ", err.Error())
+        return
+    }
+
+    if lockCheck {
+        log.Println("(check) lock is acquired >>>")
+    } else {
+        log.Println("(check) lock is (NOT) acquired !!")
+    }
+
+    log.Println("sleeping for a few secs...")
+
+    time.Sleep(10 * time.Second)
+
+    released, err := lock1.ReleaseLock()
+    if err != nil {
+        log.Println("failed to release lock : ", err.Error())
+        return
+    }
+
+    if released {
+        println("Lock Released >>>")
+    } else {
+        println("Could not release lock :(")
+    }
+
+    lockCheck, err = lock1.IsLockAcquired()
+    if err != nil {
+        log.Println("failed to check lock : ", err.Error())
+        return
+    }
+    if lockCheck {
+        log.Println("(check) lock is acquired >>>>")
+    } else {
+        log.Println("(check) lock is (NOT) acquired !!")
+    }
+
+    <-done
+}
+
+/*
+
+After Acquiring
+
+lock_database=> select * from custom_locks order by id;
+ id |          created_at           |          updated_at           | deleted_at |  key  | acquired |          acquired_at          | acquired_at_epoch
+----+-------------------------------+-------------------------------+------------+-------+----------+-------------------------------+-------------------
+  2 | 2023-11-19 03:51:16.645602+00 | 2023-11-19 03:53:15.663936+00 |            | test1 | f        | 2023-11-19 03:51:16.561427+00 |        1700365876
+(1 row)
+
+*/
 ```

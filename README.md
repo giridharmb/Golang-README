@@ -128,6 +128,8 @@
 
 [HTTP API Which Queries BigQuery Table](#http-api-which-queries-bigquery-table)
 
+[Date Time Utils](#date-time-utils)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -8268,5 +8270,147 @@ Hours (How Far To Look Behind in BQ) + Exact Match : string(payload.subject) = '
 http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table&event_type=type_1&time_delta=1&time_resolution=HOUR&match=EXACT&resource=1f946d8e-63b7-4eb0-8914-b2e5aedc2920
 http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table&event_type=type_2&time_delta=2&time_resolution=HOUR&match=EXACT&resource=25d48d7c-e905-4b26-9fbe-abceaddd39ad
 http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table&event_type=type_3&time_delta=3&time_resolution=HOUR&match=EXACT&resource=4ac3479c-fce6-4d3e-9300-0ae7563f2144
+```
+
+#### [Date Time Utils](#date-time-utils)
+
+```go
+// SanitizeStringForBQ
+// Modify this according to your needs
+// we are removing characters before passing it to BQ query
+func SanitizeStringForBQ(str string) string {
+    // Regular expression to match unwanted characters
+    reg := regexp.MustCompile(`[^a-zA-Z0-9\-_\/\.]`)
+
+    // Replace unwanted characters with an empty string
+    return reg.ReplaceAllString(str, "")
+}
+
+func IsValidDate(dateStr string) bool {
+    _, err := time.Parse(time.DateTime, dateStr)
+    return err == nil
+}
+
+/*
+GetDateFromEpoch
+Return Date-Time in the following format : 2021-03-15 08:30:00
+*/
+func GetDateFromEpoch(epoch int64) string {
+    dateTime := time.Unix(epoch, 0) // in nanoseconds
+    year, month, day := dateTime.Date()
+    hour, minute, second := dateTime.Clock()
+    currentDate := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d", year, int(month), day, hour, minute, second)
+    return currentDate
+}
+
+/*
+CheckIfDateIsValid
+dateStr := "2021-03-15 08:30:00"
+*/
+func CheckIfDateIsValid(dateStr string) bool {
+    if IsValidDate(dateStr) {
+        //fmt.Println(dateStr, "is a valid date")
+        return true
+    } else {
+        //fmt.Println(dateStr, "is not a valid date")
+        return false
+    }
+}
+
+func GetEpochTime() int64 {
+    return time.Now().Unix()
+}
+
+/*
+GetCurrentDate
+timeZone = 'UTC" or 'PST' Only for now
+*/
+func GetCurrentDate(timeZone string) string {
+    now := time.Now()
+
+    switch timeZone {
+    case "UTC":
+        now = time.Now().UTC()
+    case "PST":
+        location, _ := time.LoadLocation("America/Los_Angeles")
+        now = time.Now().In(location)
+    default:
+        log.Println("Unknown Location")
+    }
+
+    year, month, day := now.Date()
+    hour, minute, second := now.Clock()
+    currentDate := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d", year, int(month), day, hour, minute, second)
+    return currentDate
+}
+
+/*
+CheckFromDateAndToDateIsValid
+fromDate should be earlier than toDate
+(fromDate , toDate) format : 2021-03-15 08:30:00
+*/
+func CheckFromDateAndToDateIsValid(fromDate string, toDate string) (int64, bool) {
+    var err error
+    var delta int64
+    var parsedTime time.Time
+    if !CheckIfDateIsValid(fromDate) {
+        log.Printf("fromDate : (%v) is NOT valid", fromDate)
+        return delta, false
+    }
+    if !CheckIfDateIsValid(toDate) {
+        log.Printf("toDate : (%v) is NOT valid", toDate)
+        return delta, false
+    }
+
+    parsedTime, err = time.Parse(time.DateTime, fromDate)
+    if err != nil {
+        log.Printf("fromDate (%v) parse error : %v", fromDate, err.Error())
+        return delta, false
+    }
+    fromDateEpoch := parsedTime.Unix()
+
+    parsedTime, err = time.Parse(time.DateTime, toDate)
+    if err != nil {
+        log.Printf("toDate : (%v) parse error : %v", toDate, err.Error())
+        return delta, false
+    }
+    toDateEpoch := parsedTime.Unix()
+
+    if toDateEpoch > fromDateEpoch {
+        log.Printf("true : toDate (%v) > fromDate (%v)", toDate, fromDate)
+        delta = toDateEpoch - fromDateEpoch
+        return delta, true
+
+    } else {
+        log.Printf("false : toDate (%v) <= fromDate (%v)", toDate, fromDate)
+        return delta, false
+    }
+}
+```
+
+How To Use In `main.go`
+
+```go
+log.Println("Date-Time (UTC) : ", GetCurrentDate("UTC"))
+log.Println("Date-Time (PST) : ", GetCurrentDate("PST"))
+
+date1 := fmt.Sprintf("2023-12-30 15:59:59")
+date2 := fmt.Sprintf("2023-13-30 13:59:59")
+date3 := fmt.Sprintf("2023-12-30 24:01:01")
+
+date4 := fmt.Sprintf("2023-12-25 13:00:00")
+date5 := fmt.Sprintf("2023-11-25 14:59:59")
+
+delta, _ := CheckFromDateAndToDateIsValid(date5, date4)
+log.Printf("delta : %v", delta)
+
+CheckIfDateIsValid(date1)
+CheckIfDateIsValid(date2)
+CheckIfDateIsValid(date3)
+
+epoch := GetEpochTime()
+log.Println("epoch : ", epoch)
+epochDate := GetDateFromEpoch(epoch)
+log.Println("epochDate : ", epochDate)
 ```
 

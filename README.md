@@ -8414,3 +8414,14 @@ epochDate := GetDateFromEpoch(epoch)
 log.Println("epochDate : ", epochDate)
 ```
 
+Sample Run
+
+```bash
+2023/11/22 10:40:24 Date-Time (UTC) :  2023-11-22 18:40:24
+2023/11/22 10:40:24 Date-Time (PST) :  2023-11-22 10:40:24
+2023/11/22 10:40:24 true : toDate (2023-12-25 13:00:00) > fromDate (2023-11-25 14:59:59)
+2023/11/22 10:40:24 delta : 2584801
+2023/11/22 10:40:24 epoch :  1700678424
+2023/11/22 10:40:24 epochDate :  2023-11-22 10:40:24
+```
+

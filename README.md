@@ -126,9 +126,11 @@
 
 [PostgreSQL Custom Locks Using GORM](#postgresql-custom-locks-using-gorm)
 
-[HTTP API Which Queries BigQuery Table](#http-api-which-queries-bigquery-table)
+[HTTP API Which Queries BigQuery Table ](#http-api-which-queries-bigquery-table)
 
 [Date Time Utils](#date-time-utils)
+
+[HTTP API Which Queries BigQuery Table V2](#http-api-which-queries-bigquery-table-v2)
 
 <hr/>
 
@@ -8275,6 +8277,23 @@ http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table&event_t
 #### [Date Time Utils](#date-time-utils)
 
 ```go
+func TrimCharacter(originalStr string, charToReplace string, charToReplaceWith string) string {
+    return strings.ReplaceAll(originalStr, charToReplace, charToReplaceWith)
+}
+
+/*
+ValidateCustomDateTime
+dateTime should be in the following format : YYYY-MM-DD_HH:MM:SS (make sure you have '_')
+*/
+func ValidateCustomDateTime(dateTime string) bool {
+    regex, err := regexp.Compile(`^\d{4}-\d{2}-\d{2}_\d{2}:\d{2}:\d{2}$`)
+    if err != nil {
+        fmt.Println("Invalid regex:", err)
+        return false
+    }
+    return regex.MatchString(dateTime)
+}
+
 // SanitizeStringForBQ
 // Modify this according to your needs
 // we are removing characters before passing it to BQ query
@@ -8425,3 +8444,716 @@ Sample Run
 2023/11/22 10:40:24 epochDate :  2023-11-22 10:40:24
 ```
 
+#### [HTTP API Which Queries BigQuery Table V2](#http-api-which-queries-bigquery-table-v2)
+
+```go
+package main
+
+import (
+    "cloud.google.com/go/bigquery"
+    "context"
+    "encoding/json"
+    "errors"
+    "fmt"
+    "github.com/gorilla/mux"
+    "google.golang.org/api/iterator"
+    "google.golang.org/api/option"
+    "log"
+    "net/http"
+    "os"
+    "regexp"
+    "strconv"
+    "strings"
+    "time"
+)
+
+/*
+Setup:
+
+export GCP_SERVICE_ACCOUNT_JSON_FILE="$HOME/path/to/gcp_service_acct.json"
+export GCP_TEST_PROJECT="GCP_PROJECT_NAME"
+export GCP_TEST_DATASET="GCP_DATASET_NAME"
+export GCP_TABLE_1="BQ_TABLE_1"
+export GCP_TABLE_2="BQ_TABLE_2"
+export GCP_TABLE_3="BQ_TABLE_3"
+*/
+
+type Response struct {
+    Status  string `json:"status"`
+    Message string `json:"message"`
+}
+
+var BQClient *bigquery.Client
+
+func main() {
+    message := ""
+
+    Initialize()
+
+    r := mux.NewRouter()
+
+    r.HandleFunc("/api/health", handleApiHealthCheck).Methods("GET")
+    r.HandleFunc("/api/v1/big_query_resource", handleBigQueryMatchingResource).Methods("GET")
+
+    corsMiddleware := func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            // Set CORS headers
+            w.Header().Set("Access-Control-Allow-Origin", "*")
+            w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+            w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+            w.Header().Set("Access-Control-Allow-Headers", "Accept")
+
+            // Handle preflight requests
+            if r.Method == http.MethodOptions {
+                w.WriteHeader(http.StatusOK)
+                return
+            }
+
+            next.ServeHTTP(w, r)
+        })
+    }
+
+    // Use the CORS middleware
+    r.Use(corsMiddleware)
+
+    http.Handle("/", r)
+
+    port := "8888"
+    bindIPAddress := "0.0.0.0"
+    addr := fmt.Sprintf("%v:%v", bindIPAddress, port)
+
+    serverAddr := addr
+
+    message = fmt.Sprintf("Server will be listening @ %s", serverAddr)
+    log.Println(message)
+
+    /* ************** */
+
+    log.Println("Date-Time (UTC) : ", GetCurrentDate("UTC"))
+    log.Println("Date-Time (PST) : ", GetCurrentDate("PST"))
+
+    date1 := fmt.Sprintf("2023-12-30 15:59:59")
+    date2 := fmt.Sprintf("2023-13-30 13:59:59")
+    date3 := fmt.Sprintf("2023-12-30 24:01:01")
+
+    date4 := fmt.Sprintf("2023-12-25 13:00:00")
+    date5 := fmt.Sprintf("2023-11-25 14:59:59")
+
+    delta, _ := CheckFromDateAndToDateIsValid(date5, date4)
+    log.Printf("delta : %v", delta)
+
+    CheckIfDateIsValid(date1)
+    CheckIfDateIsValid(date2)
+    CheckIfDateIsValid(date3)
+
+    epoch := GetEpochTime()
+    log.Println("epoch : ", epoch)
+    epochDate := GetDateFromEpoch(epoch)
+    log.Println("epochDate : ", epochDate)
+
+    /* ************** */
+
+    err := http.ListenAndServe(serverAddr, nil)
+    if err != nil {
+        message = fmt.Sprintf("failed to setup http server on address (%v) : %v", serverAddr, err.Error())
+        log.Fatalln(message)
+    }
+}
+
+func handleApiHealthCheck(w http.ResponseWriter, r *http.Request) {
+
+    log.Printf("handleTestRequest...")
+
+    response := Response{}
+
+    response.Status = "ok"
+    response.Message = "status"
+
+    log.Printf("handleTestRequest done !")
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    _ = json.NewEncoder(w).Encode(response)
+}
+
+func QueryTableRows(ctx context.Context, client *bigquery.Client, query string) ([]interface{}, error) {
+    msg := ""
+    response := make([]interface{}, 0)
+    bqQuery := client.Query(query)
+    it, err := bqQuery.Read(ctx)
+    if err != nil {
+        msg = fmt.Sprintf("__bigquery__ : error : could not perform bqQuery.Read(ctx) : %v", err.Error())
+        return response, errors.New(msg)
+    }
+
+    errorOccurred := false
+
+    for {
+        var values []bigquery.Value
+        err = it.Next(&values)
+        if errors.Is(err, iterator.Done) {
+            break
+        }
+        if err != nil {
+            errorOccurred = true
+            break
+        }
+        for _, value := range values {
+
+            jsonStr, ok := value.(string)
+            if ok {
+                var data map[string]interface{}
+                err = json.Unmarshal([]byte(jsonStr), &data)
+                if err != nil {
+                    log.Printf("__bigquery__ : __error__ : json.Unmarshal([]byte(jsonStr), &data) : %v", err.Error())
+                } else {
+                    response = append(response, data)
+                }
+            } else {
+                log.Println("__bigquery__ : value.(string) is false")
+            }
+        }
+    }
+    if errorOccurred {
+        msg = fmt.Sprintf("__bigquery__ : error : could not perform it.Next(&values) : %v", err.Error())
+        errorOccurred = true
+        return response, errors.New(msg)
+    }
+    return response, nil
+}
+
+func GetBQClient() (*bigquery.Client, error) {
+    var client *bigquery.Client
+    var err error
+    var errorMessage string
+    ctx := context.Background()
+
+    gcpProjectJSON := os.Getenv("GCP_SERVICE_ACCOUNT_JSON") // path to JSON File
+
+    projectID := os.Getenv("GCP_TEST_PROJECT") // your GCP Project-Name
+
+    // Create a BigQuery client
+    client, err = bigquery.NewClient(ctx, projectID, option.WithCredentialsFile(gcpProjectJSON))
+    if err != nil {
+        errorMessage = fmt.Sprintf("error : failed to create BigQuery client: %v", err.Error())
+        log.Printf(errorMessage)
+        return client, errors.New(errorMessage)
+    }
+
+    return client, nil
+}
+
+func Initialize() {
+    BQClient, _ = GetBQClient()
+}
+
+func handleBigQueryMatchingResource(w http.ResponseWriter, r *http.Request) {
+    msg := ""
+    response := make(map[string]interface{})
+    response["error"] = ""
+    response["data"] = make([]interface{}, 0)
+
+    operation := r.URL.Query().Get("operation")
+    if operation == "" {
+        msg = fmt.Sprintf("error : query param 'operation' is empty !")
+        response["error"] = msg
+        log.Println(response)
+        w.WriteHeader(http.StatusBadRequest)
+        _ = json.NewEncoder(w).Encode(&response)
+        return
+    }
+
+    eventType := r.URL.Query().Get("event_type")
+    if eventType == "" {
+        msg = fmt.Sprintf("error : query parameter 'event_type' cannot be empty !")
+        response["error"] = msg
+        log.Println(response)
+        w.WriteHeader(http.StatusBadRequest)
+        _ = json.NewEncoder(w).Encode(&response)
+        return
+    }
+
+    if !(eventType == "type_1" || eventType == "type_2" || eventType == "type_3") {
+        msg = fmt.Sprintf("error : query parameter 'event_type' should be ('scheduled' or 'resource' or 'flash') !")
+        response["error"] = msg
+        log.Println(response)
+        w.WriteHeader(http.StatusBadRequest)
+        _ = json.NewEncoder(w).Encode(&response)
+        return
+    }
+
+    match := r.URL.Query().Get("match")
+    if match == "" {
+        msg = fmt.Sprintf("error : query parameter 'match' cannot be empty !")
+        response["error"] = msg
+        log.Println(response)
+        w.WriteHeader(http.StatusBadRequest)
+        _ = json.NewEncoder(w).Encode(&response)
+        return
+    }
+
+    if !(match == "LIKE" || match == "EXACT") {
+        msg = fmt.Sprintf("error : query parameter 'match' should be either 'EXACT' or 'LIKE'")
+        response["error"] = msg
+        log.Println(response)
+        w.WriteHeader(http.StatusBadRequest)
+        _ = json.NewEncoder(w).Encode(&response)
+        return
+    }
+
+    log.Printf("__bigquery__ : match : %v", match)
+
+    resource := r.URL.Query().Get("resource")
+    if resource == "" {
+        msg = fmt.Sprintf("error : query parameter 'resource' cannot be empty !")
+        response["error"] = msg
+        log.Println(response)
+        w.WriteHeader(http.StatusBadRequest)
+        _ = json.NewEncoder(w).Encode(&response)
+        return
+    }
+
+    log.Printf("__bigquery__ : resource : %v", resource)
+
+    sanitizedResource := SanitizeStringForBQ(resource)
+    log.Printf("__bigquery__ : sanitizedResource : %v", sanitizedResource)
+
+    sanitizedResourceLowerCase := strings.ToLower(SanitizeStringForBQ(resource))
+    log.Printf("__bigquery__ : sanitizedResourceLowerCase : %v", sanitizedResourceLowerCase)
+
+    gcpProject := os.Getenv("GCP_TEST_PROJECT")
+    gcpDataSet := os.Getenv("GCP_TEST_DATASET")
+    table1 := os.Getenv("GCP_TABLE_1")
+    table2 := os.Getenv("GCP_TABLE_2")
+    table3 := os.Getenv("GCP_TABLE_3")
+
+    switch operation {
+    case "query_bq_table_with_time":
+        timeDelta := r.URL.Query().Get("time_delta")
+        if timeDelta == "" {
+            msg = fmt.Sprintf("error : query parameter 'time_delta' cannot be empty !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        timeResolution := r.URL.Query().Get("time_resolution")
+        if timeResolution == "" {
+            msg = fmt.Sprintf("error : query parameter 'time_resolution' cannot be empty !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        if !(timeResolution == "MINUTE" || timeResolution == "HOUR") {
+            msg = fmt.Sprintf("error : query parameter 'time_resolution' should be either 'MINUTE' or 'HOUR'")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        timeDeltaInt, timeParseErr := strconv.Atoi(timeDelta)
+        if timeParseErr != nil {
+            msg = fmt.Sprintf("error : query parameter 'time_delta' should be a valid (integer) value")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        if timeResolution == "HOUR" {
+            if timeDeltaInt <= 0 || timeDeltaInt >= 73 {
+                msg = fmt.Sprintf("error : query parameter 'time_delta' should be an integer between 1 and 72 (a max 3 days) !")
+                response["error"] = msg
+                log.Println(response)
+                w.WriteHeader(http.StatusBadRequest)
+                _ = json.NewEncoder(w).Encode(&response)
+                return
+            }
+        } else if timeResolution == "MINUTE" {
+            if timeDeltaInt <= 0 || timeDeltaInt >= 4321 {
+                msg = fmt.Sprintf("error : query parameter 'time_delta' should be an integer between 1 and 4320 (a max 3 days) !")
+                response["error"] = msg
+                log.Println(response)
+                w.WriteHeader(http.StatusBadRequest)
+                _ = json.NewEncoder(w).Encode(&response)
+                return
+            }
+        } else {
+            msg = fmt.Sprintf("error : query parameter 'time_resolution' should be either 'MINUTE' or 'HOUR'")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        query := ""
+
+        switch match {
+        case "EXACT":
+            switch eventType {
+            case "type_1":
+                query = fmt.Sprintf(`SELECT payload FROM %v.%v.%v WHERE scrape_ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL %v %v) AND LOWER(string(payload.subject)) = '%v' order by scrape_ts desc;`, gcpProject, gcpDataSet, table1, timeDelta, timeResolution, sanitizedResourceLowerCase)
+            case "type_2":
+                query = fmt.Sprintf(`SELECT payload FROM %v.%v.%v WHERE scrape_ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL %v %v) AND LOWER(string(payload.subject)) = '%v' order by scrape_ts desc;`, gcpProject, gcpDataSet, table2, timeDelta, timeResolution, sanitizedResourceLowerCase)
+            case "type_3":
+                query = fmt.Sprintf(`SELECT payload FROM %v.%v.%v WHERE scrape_ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL %v %v) AND LOWER(string(payload.subject)) = '%v' order by scrape_ts desc;`, gcpProject, gcpDataSet, table3, timeDelta, timeResolution, sanitizedResourceLowerCase)
+            }
+        case "LIKE":
+            switch eventType {
+            case "type_1":
+                query = fmt.Sprintf(`SELECT payload FROM %v.%v.%v WHERE scrape_ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL %v %v) AND LOWER(string(payload.subject)) LIKE '%%%v%%' order by scrape_ts desc;`, gcpProject, gcpDataSet, table1, timeDelta, timeResolution, sanitizedResourceLowerCase)
+            case "type_2":
+                query = fmt.Sprintf(`SELECT payload FROM %v.%v.%v WHERE scrape_ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL %v %v) AND LOWER(string(payload.subject)) LIKE '%%%v%%' order by scrape_ts desc;`, gcpProject, gcpDataSet, table2, timeDelta, timeResolution, sanitizedResourceLowerCase)
+            case "type_3":
+                query = fmt.Sprintf(`SELECT payload FROM %v.%v.%v WHERE scrape_ts >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL %v %v) AND LOWER(string(payload.subject)) LIKE '%%%v%%' order by scrape_ts desc;`, gcpProject, gcpDataSet, table3, timeDelta, timeResolution, sanitizedResourceLowerCase)
+            }
+        default:
+            msg = fmt.Sprintf("error : query parameter 'match' should be either 'EXACT' or 'LIKE'")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        log.Printf("__bigquery__ : query : [ %v ]", query)
+
+        rows, err := QueryTableRows(context.Background(), BQClient, query)
+        if err != nil {
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+        response["data"] = rows
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        _ = json.NewEncoder(w).Encode(response)
+        return
+
+    case "query_bq_table_time_range":
+        dateTimeFrom := r.URL.Query().Get("date_time_from")
+        if dateTimeFrom == "" {
+            msg = fmt.Sprintf("error : query parameter 'date_time_from' (YYYY-MM-DD_HH:MM:SS) cannot be empty !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+        if !ValidateCustomDateTime(dateTimeFrom) {
+            msg = fmt.Sprintf("error : query parameter 'date_time_from' should be in this format : YYYY-MM-DD_HH:MM:SS")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+        dateTimeFrom = TrimCharacter(dateTimeFrom, "_", " ")
+        log.Printf("dateTimeFrom >> [ %v ]", dateTimeFrom)
+
+        dateTimeTo := r.URL.Query().Get("date_time_to")
+        if dateTimeTo == "" {
+            msg = fmt.Sprintf("error : query parameter 'date_time_to' (YYYY-MM-DD_HH:MM:SS) cannot be empty !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+        if !ValidateCustomDateTime(dateTimeTo) {
+            msg = fmt.Sprintf("error : query parameter 'date_time_to' should be in this format : YYYY-MM-DD_HH:MM:SS")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+        dateTimeTo = TrimCharacter(dateTimeTo, "_", " ")
+        log.Printf("dateTimeTo >> [ %v ]", dateTimeTo)
+
+        if !CheckIfDateIsValid(dateTimeFrom) {
+            msg = fmt.Sprintf("error : query parameter 'date_time_from' (YYYY-MM-DD_HH:MM:SS) is not valid")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        if !CheckIfDateIsValid(dateTimeTo) {
+            msg = fmt.Sprintf("error : query parameter 'date_time_to' (YYYY-MM-DD_HH:MM:SS) is not valid")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        totalSecondsBetweenTimeRanges, rangeValid := CheckFromDateAndToDateIsValid(dateTimeFrom, dateTimeTo)
+        if !rangeValid {
+            msg = fmt.Sprintf("error : query parameter 'date_time_to' (YYYY-MM-DD HH:MM:SS) (%v) should *(greater than)* 'date_time_from' (YYYY-MM-DD HH:MM:SS) (%v)", dateTimeTo, dateTimeFrom)
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        if totalSecondsBetweenTimeRanges > 259200 {
+            msg = fmt.Sprintf("error : difference beween 'date_time_to' (%v)  and 'date_time_from' (%v) is more than 3 days ! it is going to cost us a lot of $$ if we extract too much data !", dateTimeTo, dateTimeFrom)
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        query := ""
+
+        switch match {
+        case "EXACT":
+            switch eventType {
+            case "type_1":
+                query = fmt.Sprintf(`SELECT payload FROM %v.%v.%v WHERE (scrape_ts >= TIMESTAMP('%v') AND scrape_ts <= TIMESTAMP('%v')) AND LOWER(string(payload.subject)) = '%v' order by scrape_ts desc;`, gcpProject, gcpDataSet, table1, dateTimeFrom, dateTimeTo, sanitizedResourceLowerCase)
+            case "type_2":
+                query = fmt.Sprintf(`SELECT payload FROM %v.%v.%v WHERE (scrape_ts >= TIMESTAMP('%v') AND scrape_ts <= TIMESTAMP('%v')) AND LOWER(string(payload.subject)) = '%v' order by scrape_ts desc;`, gcpProject, gcpDataSet, table2, dateTimeFrom, dateTimeTo, sanitizedResourceLowerCase)
+            case "type_3":
+                query = fmt.Sprintf(`SELECT payload FROM %v.%v.%v WHERE (scrape_ts >= TIMESTAMP('%v') AND scrape_ts <= TIMESTAMP('%v')) AND LOWER(string(payload.subject)) = '%v' order by scrape_ts desc;`, gcpProject, gcpDataSet, table3, dateTimeFrom, dateTimeTo, sanitizedResourceLowerCase)
+            }
+        case "LIKE":
+            switch eventType {
+            case "type_1":
+                query = fmt.Sprintf(`SELECT payload FROM %v.%v.%v WHERE (scrape_ts >= TIMESTAMP('%v') AND scrape_ts <= TIMESTAMP('%v')) AND LOWER(string(payload.subject)) LIKE '%%%v%%' order by scrape_ts desc;`, gcpProject, gcpDataSet, table1, dateTimeFrom, dateTimeTo, sanitizedResourceLowerCase)
+            case "type_2":
+                query = fmt.Sprintf(`SELECT payload FROM %v.%v.%v WHERE (scrape_ts >= TIMESTAMP('%v') AND scrape_ts <= TIMESTAMP('%v')) AND LOWER(string(payload.subject)) LIKE '%%%v%%' order by scrape_ts desc;`, gcpProject, gcpDataSet, table2, dateTimeFrom, dateTimeTo, sanitizedResourceLowerCase)
+            case "type_3":
+                query = fmt.Sprintf(`SELECT payload FROM %v.%v.%v WHERE (scrape_ts >= TIMESTAMP('%v') AND scrape_ts <= TIMESTAMP('%v')) AND LOWER(string(payload.subject)) LIKE '%%%v%%' order by scrape_ts desc;`, gcpProject, gcpDataSet, table3, dateTimeFrom, dateTimeTo, sanitizedResourceLowerCase)
+            }
+        default:
+            msg = fmt.Sprintf("error : query parameter 'match' should be either 'EXACT' or 'LIKE'")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        log.Printf("__bigquery__ : query : [ %v ]", query)
+
+        rows, err := QueryTableRows(context.Background(), BQClient, query)
+        if err != nil {
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+        response["data"] = rows
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        _ = json.NewEncoder(w).Encode(response)
+        return
+
+    }
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    _ = json.NewEncoder(w).Encode(response)
+}
+
+func TrimCharacter(originalStr string, charToReplace string, charToReplaceWith string) string {
+    return strings.ReplaceAll(originalStr, charToReplace, charToReplaceWith)
+}
+
+/*
+ValidateCustomDateTime
+dateTime should be in the following format : YYYY-MM-DD_HH:MM:SS (make sure you have '_')
+*/
+func ValidateCustomDateTime(dateTime string) bool {
+    regex, err := regexp.Compile(`^\d{4}-\d{2}-\d{2}_\d{2}:\d{2}:\d{2}$`)
+    if err != nil {
+        fmt.Println("Invalid regex:", err)
+        return false
+    }
+    return regex.MatchString(dateTime)
+}
+
+// SanitizeStringForBQ
+// Modify this according to your needs
+// we are removing characters before passing it to BQ query
+
+func SanitizeStringForBQ(str string) string {
+    // Regular expression to match unwanted characters
+    reg := regexp.MustCompile(`[^a-zA-Z0-9\-_\/\.]`)
+
+    // Replace unwanted characters with an empty string
+    return reg.ReplaceAllString(str, "")
+}
+
+func IsValidDate(dateStr string) bool {
+    _, err := time.Parse(time.DateTime, dateStr)
+    return err == nil
+}
+
+/*
+GetDateFromEpoch
+Return Date-Time in the following format : 2021-03-15 08:30:00
+*/
+func GetDateFromEpoch(epoch int64) string {
+    dateTime := time.Unix(epoch, 0) // in nanoseconds
+    year, month, day := dateTime.Date()
+    hour, minute, second := dateTime.Clock()
+    currentDate := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d", year, int(month), day, hour, minute, second)
+    return currentDate
+}
+
+/*
+CheckIfDateIsValid
+dateStr := "2021-03-15 08:30:00"
+*/
+func CheckIfDateIsValid(dateStr string) bool {
+    if IsValidDate(dateStr) {
+        //fmt.Println(dateStr, "is a valid date")
+        return true
+    } else {
+        //fmt.Println(dateStr, "is not a valid date")
+        return false
+    }
+}
+
+func GetEpochTime() int64 {
+    return time.Now().Unix()
+}
+
+/*
+GetCurrentDate
+timeZone = 'UTC" or 'PST' Only for now
+*/
+func GetCurrentDate(timeZone string) string {
+    now := time.Now()
+
+    switch timeZone {
+    case "UTC":
+        now = time.Now().UTC()
+    case "PST":
+        location, _ := time.LoadLocation("America/Los_Angeles")
+        now = time.Now().In(location)
+    default:
+        log.Println("Unknown Location")
+    }
+
+    year, month, day := now.Date()
+    hour, minute, second := now.Clock()
+    currentDate := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d", year, int(month), day, hour, minute, second)
+    return currentDate
+}
+
+/*
+CheckFromDateAndToDateIsValid
+fromDate should be earlier than toDate
+(fromDate , toDate) format : 2021-03-15 08:30:00
+*/
+func CheckFromDateAndToDateIsValid(fromDate string, toDate string) (int64, bool) {
+    var err error
+    var delta int64
+    var parsedTime time.Time
+    if !CheckIfDateIsValid(fromDate) {
+        log.Printf("fromDate : (%v) is NOT valid", fromDate)
+        return delta, false
+    }
+    if !CheckIfDateIsValid(toDate) {
+        log.Printf("toDate : (%v) is NOT valid", toDate)
+        return delta, false
+    }
+
+    parsedTime, err = time.Parse(time.DateTime, fromDate)
+    if err != nil {
+        log.Printf("fromDate (%v) parse error : %v", fromDate, err.Error())
+        return delta, false
+    }
+    fromDateEpoch := parsedTime.Unix()
+
+    parsedTime, err = time.Parse(time.DateTime, toDate)
+    if err != nil {
+        log.Printf("toDate : (%v) parse error : %v", toDate, err.Error())
+        return delta, false
+    }
+    toDateEpoch := parsedTime.Unix()
+
+    if toDateEpoch > fromDateEpoch {
+        log.Printf("true : toDate (%v) > fromDate (%v)", toDate, fromDate)
+        delta = toDateEpoch - fromDateEpoch
+        return delta, true
+
+    } else {
+        log.Printf("false : toDate (%v) <= fromDate (%v)", toDate, fromDate)
+        return delta, false
+    }
+}
+
+/*
+
+BQ Table Schema:
+
+Table has 2 columns >>
+
+Column-1 : scrape_ts (Type : TIMESTAMP)
+Column-2 : payload   (Type : JSON)
+
+HTTP GET Requests >>
+
+--- Type-1 Query : Pattern-Match (Like) ---
+
+Minutes (How Far To Look Behind in BQ) + Pattern-Match : string(payload.subject) LIKE '%some_data%'
+
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_1&time_delta=5&time_resolution=MINUTE&match=LIKE&resource=95b6
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_2&time_delta=10&time_resolution=MINUTE&match=LIKE&resource=4304
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_3&time_delta=15&time_resolution=MINUTE&match=LIKE&resource=e905
+
+Hours (How Far To Look Behind in BQ) + Pattern-Match : string(payload.subject) LIKE '%some_data%'
+
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_1&time_delta=1&time_resolution=HOUR&match=LIKE&resource=95b6
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_2&time_delta=2&time_resolution=HOUR&match=LIKE&resource=4304
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_3&time_delta=3&time_resolution=HOUR&match=LIKE&resource=e905
+
+--- Type-2 Query : Exact Match ---
+
+Minutes (How Far To Look Behind in BQ) + Exact Match : string(payload.subject) = 'some_data'
+
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_1&time_delta=5&time_resolution=MINUTE&match=EXACT&resource=1f946d8e-63b7-4eb0-8914-b2e5aedc2920
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_2&time_delta=10&time_resolution=MINUTE&match=EXACT&resource=4ac3479c-fce6-4d3e-9300-0ae7563f2144
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_3&time_delta=15&time_resolution=MINUTE&match=EXACT&resource=25d48d7c-e905-4b26-9fbe-abceaddd39ad
+
+Hours (How Far To Look Behind in BQ) + Exact Match : string(payload.subject) = 'some_data'
+
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_1&time_delta=1&time_resolution=HOUR&match=EXACT&resource=1f946d8e-63b7-4eb0-8914-b2e5aedc2920
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_2&time_delta=2&time_resolution=HOUR&match=EXACT&resource=25d48d7c-e905-4b26-9fbe-abceaddd39ad
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_3&time_delta=3&time_resolution=HOUR&match=EXACT&resource=4ac3479c-fce6-4d3e-9300-0ae7563f2144
+
+--- Type-3 Query : Time Range Query ---
+
+Add these to URL >>
+
+date_time_from=2023-11-21_12:00:00
+date_time_to=2023-11-21_18:00:00
+
+Pattern-Match (Like)
+
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_time_range&event_type=type_1&match=LIKE&resource=4ac3479c&date_time_from=2023-11-21_12:00:00&date_time_to=2023-11-21_18:00:00
+
+Exact Match
+
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_time_range&event_type=type_1&match=EXACT&resource=25d48d7c-e905-4b26-9fbe-abceaddd39ad&date_time_from=2023-11-21_12:00:00&date_time_to=2023-11-21_18:00:00
+
+*/
+```

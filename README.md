@@ -8476,6 +8476,7 @@ export GCP_TEST_DATASET="GCP_DATASET_NAME"
 export GCP_TABLE_1="BQ_TABLE_1"
 export GCP_TABLE_2="BQ_TABLE_2"
 export GCP_TABLE_3="BQ_TABLE_3"
+export GCP_TABLE_4="BQ_TABLE_4" # table with flattened columns -> Important : Note This !
 */
 
 type Response struct {
@@ -8663,25 +8664,6 @@ func handleBigQueryMatchingResource(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    eventType := r.URL.Query().Get("event_type")
-    if eventType == "" {
-        msg = fmt.Sprintf("error : query parameter 'event_type' cannot be empty !")
-        response["error"] = msg
-        log.Println(response)
-        w.WriteHeader(http.StatusBadRequest)
-        _ = json.NewEncoder(w).Encode(&response)
-        return
-    }
-
-    if !(eventType == "type_1" || eventType == "type_2" || eventType == "type_3") {
-        msg = fmt.Sprintf("error : query parameter 'event_type' should be ('scheduled' or 'resource' or 'flash') !")
-        response["error"] = msg
-        log.Println(response)
-        w.WriteHeader(http.StatusBadRequest)
-        _ = json.NewEncoder(w).Encode(&response)
-        return
-    }
-
     match := r.URL.Query().Get("match")
     if match == "" {
         msg = fmt.Sprintf("error : query parameter 'match' cannot be empty !")
@@ -8726,9 +8708,30 @@ func handleBigQueryMatchingResource(w http.ResponseWriter, r *http.Request) {
     table1 := os.Getenv("GCP_TABLE_1")
     table2 := os.Getenv("GCP_TABLE_2")
     table3 := os.Getenv("GCP_TABLE_3")
+    table4 := os.Getenv("GCP_TABLE_4")
 
     switch operation {
     case "query_bq_table_with_time":
+
+        eventType := r.URL.Query().Get("event_type")
+        if eventType == "" {
+            msg = fmt.Sprintf("error : query parameter 'event_type' cannot be empty !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        if !(eventType == "type_1" || eventType == "type_2" || eventType == "type_3") {
+            msg = fmt.Sprintf("error : query parameter 'event_type' should be ('scheduled' or 'resource' or 'flash') !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
         timeDelta := r.URL.Query().Get("time_delta")
         if timeDelta == "" {
             msg = fmt.Sprintf("error : query parameter 'time_delta' cannot be empty !")
@@ -8842,6 +8845,48 @@ func handleBigQueryMatchingResource(w http.ResponseWriter, r *http.Request) {
         return
 
     case "query_bq_table_time_range":
+        /* ---------------------------------------------------- */
+
+        eventType := r.URL.Query().Get("event_type")
+        if eventType == "" {
+            msg = fmt.Sprintf("error : query parameter 'event_type' cannot be empty !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        if !(eventType == "type_1" || eventType == "type_2" || eventType == "type_3") {
+            msg = fmt.Sprintf("error : query parameter 'event_type' should be ('scheduled' or 'resource' or 'flash') !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        timeZone := r.URL.Query().Get("time_zone")
+        if timeZone == "" {
+            msg = fmt.Sprintf("error : query parameter 'time_zone' cannot be empty (it should be 'UTC' or 'PST') !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        if !(timeZone == "UTC" || timeZone == "PST") {
+            msg = fmt.Sprintf("error : query parameter 'time_zone' should be 'UTC' or 'PST' !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        log.Printf("__bigquery__ : timeZone : %v", timeZone)
+
         dateTimeFrom := r.URL.Query().Get("date_time_from")
         if dateTimeFrom == "" {
             msg = fmt.Sprintf("error : query parameter 'date_time_from' (YYYY-MM-DD_HH:MM:SS) cannot be empty !")
@@ -8880,7 +8925,6 @@ func handleBigQueryMatchingResource(w http.ResponseWriter, r *http.Request) {
             return
         }
         dateTimeTo = TrimCharacter(dateTimeTo, "_", " ")
-        log.Printf("dateTimeTo >> [ %v ]", dateTimeTo)
 
         if !CheckIfDateIsValid(dateTimeFrom) {
             msg = fmt.Sprintf("error : query parameter 'date_time_from' (YYYY-MM-DD_HH:MM:SS) is not valid")
@@ -8898,6 +8942,15 @@ func handleBigQueryMatchingResource(w http.ResponseWriter, r *http.Request) {
             w.WriteHeader(http.StatusBadRequest)
             _ = json.NewEncoder(w).Encode(&response)
             return
+        }
+        log.Printf("dateTimeTo >> [ %v ]", dateTimeTo)
+
+        if timeZone == "PST" {
+            dateTimeTo = ConvertTimeFromPSTtoUTC(dateTimeTo)
+            dateTimeFrom = ConvertTimeFromPSTtoUTC(dateTimeFrom)
+
+            log.Printf("dateTimeFrom (PST->UTC) >> [ %v ]", dateTimeFrom)
+            log.Printf("dateTimeTo   (PST->UTC) >> [ %v ]", dateTimeTo)
         }
 
         totalSecondsBetweenTimeRanges, rangeValid := CheckFromDateAndToDateIsValid(dateTimeFrom, dateTimeTo)
@@ -8964,11 +9017,180 @@ func handleBigQueryMatchingResource(w http.ResponseWriter, r *http.Request) {
         w.WriteHeader(http.StatusOK)
         _ = json.NewEncoder(w).Encode(response)
         return
+        /* ---------------------------------------------------- */
+    case "query_bq_table_time_range_flattened_columns":
+        /* ---------------------------------------------------- */
+        timeZone := r.URL.Query().Get("time_zone")
+        if timeZone == "" {
+            msg = fmt.Sprintf("error : query parameter 'time_zone' cannot be empty (it should be 'UTC' or 'PST') !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
 
+        if !(timeZone == "UTC" || timeZone == "PST") {
+            msg = fmt.Sprintf("error : query parameter 'time_zone' should be 'UTC' or 'PST' !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        log.Printf("__bigquery__ : timeZone : %v", timeZone)
+
+        dateTimeFrom := r.URL.Query().Get("date_time_from")
+        if dateTimeFrom == "" {
+            msg = fmt.Sprintf("error : query parameter 'date_time_from' (YYYY-MM-DD_HH:MM:SS) cannot be empty !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+        if !ValidateCustomDateTime(dateTimeFrom) {
+            msg = fmt.Sprintf("error : query parameter 'date_time_from' should be in this format : YYYY-MM-DD_HH:MM:SS")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+        dateTimeFrom = TrimCharacter(dateTimeFrom, "_", " ")
+        log.Printf("dateTimeFrom >> [ %v ]", dateTimeFrom)
+
+        dateTimeTo := r.URL.Query().Get("date_time_to")
+        if dateTimeTo == "" {
+            msg = fmt.Sprintf("error : query parameter 'date_time_to' (YYYY-MM-DD_HH:MM:SS) cannot be empty !")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+        if !ValidateCustomDateTime(dateTimeTo) {
+            msg = fmt.Sprintf("error : query parameter 'date_time_to' should be in this format : YYYY-MM-DD_HH:MM:SS")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+        dateTimeTo = TrimCharacter(dateTimeTo, "_", " ")
+
+        if !CheckIfDateIsValid(dateTimeFrom) {
+            msg = fmt.Sprintf("error : query parameter 'date_time_from' (YYYY-MM-DD_HH:MM:SS) is not valid")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        if !CheckIfDateIsValid(dateTimeTo) {
+            msg = fmt.Sprintf("error : query parameter 'date_time_to' (YYYY-MM-DD_HH:MM:SS) is not valid")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+        log.Printf("dateTimeTo >> [ %v ]", dateTimeTo)
+
+        if timeZone == "PST" {
+            dateTimeTo = ConvertTimeFromPSTtoUTC(dateTimeTo)
+            dateTimeFrom = ConvertTimeFromPSTtoUTC(dateTimeFrom)
+
+            log.Printf("dateTimeFrom (PST->UTC) >> [ %v ]", dateTimeFrom)
+            log.Printf("dateTimeTo   (PST->UTC) >> [ %v ]", dateTimeTo)
+        }
+
+        totalSecondsBetweenTimeRanges, rangeValid := CheckFromDateAndToDateIsValid(dateTimeFrom, dateTimeTo)
+        if !rangeValid {
+            msg = fmt.Sprintf("error : query parameter 'date_time_to' (YYYY-MM-DD HH:MM:SS) (%v) should *(greater than)* 'date_time_from' (YYYY-MM-DD HH:MM:SS) (%v)", dateTimeTo, dateTimeFrom)
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        maxAllowedTimeDelta := int64(7 * 24 * 60 * 60)
+        if totalSecondsBetweenTimeRanges > maxAllowedTimeDelta {
+            msg = fmt.Sprintf("error : difference beween 'date_time_to' (%v)  and 'date_time_from' (%v) is more than (%v seconds) ! it is going to cost us a lot of $$ if we extract too much data !", dateTimeTo, dateTimeFrom, maxAllowedTimeDelta)
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        query := ""
+
+        switch match {
+        case "EXACT":
+            query = fmt.Sprintf(`SELECT * FROM %v.%v.%v WHERE (scrape_ts >= TIMESTAMP('%v') AND scrape_ts <= TIMESTAMP('%v')) AND LOWER(subject) = '%v' order by scrape_ts desc;`, gcpProject, gcpDataSet, table4, dateTimeFrom, dateTimeTo, sanitizedResourceLowerCase)
+        case "LIKE":
+            query = fmt.Sprintf(`SELECT * FROM %v.%v.%v WHERE (scrape_ts >= TIMESTAMP('%v') AND scrape_ts <= TIMESTAMP('%v')) AND LOWER(subject) LIKE '%%%v%%' order by scrape_ts desc;`, gcpProject, gcpDataSet, table4, dateTimeFrom, dateTimeTo, sanitizedResourceLowerCase)
+        default:
+            msg = fmt.Sprintf("error : query parameter 'match' should be either 'EXACT' or 'LIKE'")
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+
+        log.Printf("__bigquery__ : query : [ %v ]", query)
+
+        rows, err := QueryViewWithFlattenedColumns(context.Background(), BQClient, query)
+        if err != nil {
+            response["error"] = msg
+            log.Println(response)
+            w.WriteHeader(http.StatusBadRequest)
+            _ = json.NewEncoder(w).Encode(&response)
+            return
+        }
+        response["data"] = rows
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        _ = json.NewEncoder(w).Encode(response)
+        return
+        /* ---------------------------------------------------- */
     }
     w.Header().Set("Content-Type", "application/json")
     w.WriteHeader(http.StatusOK)
     _ = json.NewEncoder(w).Encode(response)
+}
+
+/*
+ConvertTimeFromPSTtoUTC
+Make sure to pass dateTime as : YYYY-MM-DD HH:MM:SS
+*/
+func ConvertTimeFromPSTtoUTC(pstDateTime string) string {
+    pstLocation, err := time.LoadLocation("America/Los_Angeles")
+    if err != nil {
+        log.Printf("ERROR : %v", err.Error())
+    }
+
+    layout := "2006-01-02 15:04:05"
+    //layout := GetCurrentDate("PST")
+    log.Println("layout : ", layout)
+
+    pstTime, pstErr := time.ParseInLocation(layout, pstDateTime, pstLocation)
+    if pstErr != nil {
+        log.Printf("ERROR : %v", pstErr.Error())
+    }
+    utcTime := pstTime.UTC()
+
+    year, month, day := utcTime.Date()
+    hour, minute, second := utcTime.Clock()
+    utcDateTime := fmt.Sprintf("%d-%02d-%02d %02d:%02d:%02d", year, int(month), day, hour, minute, second)
+
+    log.Printf("pstDateTime : [ %v ] , utcDateTime : [ %v ]", pstDateTime, utcDateTime)
+    return utcDateTime
 }
 
 func TrimCharacter(originalStr string, charToReplace string, charToReplaceWith string) string {
@@ -9101,8 +9323,51 @@ func CheckFromDateAndToDateIsValid(fromDate string, toDate string) (int64, bool)
     }
 }
 
-/*
+func QueryViewWithFlattenedColumns(ctx context.Context, client *bigquery.Client, query string) ([]map[string]interface{}, error) {
+    msg := ""
+    var rows []map[string]interface{}
+    //response := make([]interface{}, 0)
+    bqQuery := client.Query(query)
+    it, err := bqQuery.Read(ctx)
+    if err != nil {
+        msg = fmt.Sprintf("__bigquery__ : error : could not perform bqQuery.Read(ctx) : %v", err.Error())
+        return rows, errors.New(msg)
+    }
 
+    errorOccurred := false
+
+    for {
+        values := make(map[string]bigquery.Value)
+
+        err = it.Next(&values)
+        if errors.Is(err, iterator.Done) {
+            break
+        }
+        if err != nil {
+            errorOccurred = true
+            msg = fmt.Sprintf("__bigquery__ : error : could not perform it.Next(&values) : %v", err.Error())
+            break
+        }
+
+        rowMap := make(map[string]interface{})
+
+        for _, fieldSchema := range it.Schema {
+            fieldName := fieldSchema.Name
+            rowMap[fieldName] = values[fieldName]
+        }
+
+        rows = append(rows, rowMap)
+
+    }
+    if errorOccurred {
+        msg = fmt.Sprintf("__bigquery__ : error : could not perform it.Next(&values) , errorOccurred => true")
+        errorOccurred = true
+        return rows, errors.New(msg)
+    }
+    return rows, nil
+}
+
+/*
 BQ Table Schema:
 
 Table has 2 columns >>
@@ -9140,20 +9405,12 @@ http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_ti
 http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_2&time_delta=2&time_resolution=HOUR&match=EXACT&resource=25d48d7c-e905-4b26-9fbe-abceaddd39ad
 http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_with_time&event_type=type_3&time_delta=3&time_resolution=HOUR&match=EXACT&resource=4ac3479c-fce6-4d3e-9300-0ae7563f2144
 
---- Type-3 Query : Time Range Query ---
-
-Add these to URL >>
-
-date_time_from=2023-11-21_12:00:00
-date_time_to=2023-11-21_18:00:00
-
-Pattern-Match (Like)
-
 http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_time_range&event_type=type_1&match=LIKE&resource=4ac3479c&date_time_from=2023-11-21_12:00:00&date_time_to=2023-11-21_18:00:00
 
-Exact Match
+Querying BigQuery With Flattened Columns
 
-http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_time_range&event_type=type_1&match=EXACT&resource=25d48d7c-e905-4b26-9fbe-abceaddd39ad&date_time_from=2023-11-21_12:00:00&date_time_to=2023-11-21_18:00:00
+QueryViewWithFlattenedColumns(...)
 
+http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_time_range_flattened_columns&date_time_from=2023-11-21_00:00:00&date_time_to=2023-11-23_23:59:59&time_zone=PST&match=LIKE&resource=/subscriptions/
 */
 ```

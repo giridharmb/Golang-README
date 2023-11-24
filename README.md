@@ -9461,6 +9461,24 @@ func main() {
         close(messages)
     }()
 
+    // if you don't want to range over the channel, and just want to have indefinite for {...} loop , then do this 
+
+    /*
+    for {
+        select {
+        case data, ok := <-messages:
+            if !ok {
+                break
+            }
+            <-ticker.C // Wait for the next tick
+            fmt.Println("Processed:", data)
+        }
+    }
+    */
+
+    // above for {...}, will not exit the program
+    // otherwise do this , which will exit the program
+
     // Process messages with rate limiting
     for msg := range messages {
         <-ticker.C // Wait for the next tick

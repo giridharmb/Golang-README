@@ -132,6 +132,8 @@
 
 [HTTP API Which Queries BigQuery Table V2](#http-api-which-queries-bigquery-table-v2)
 
+[Rate Limiting On Channel](#rate-limiting-on-channel)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -9413,4 +9415,56 @@ QueryViewWithFlattenedColumns(...)
 
 http://127.0.0.1:8888/api/v1/big_query_resource?operation=query_bq_table_time_range_flattened_columns&date_time_from=2023-11-21_00:00:00&date_time_to=2023-11-23_23:59:59&time_zone=PST&match=LIKE&resource=/subscriptions/
 */
+```
+
+#### [Rate Limiting On Channel](#rate-limiting-on-channel)
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "math/rand"
+    "time"
+)
+
+// randomString generates a random alphanumeric string of length n.
+func randomString(n int) string {
+    const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    b := make([]byte, n)
+    for i := range b {
+        b[i] = letterBytes[rand.Intn(len(letterBytes))]
+    }
+    return string(b)
+}
+
+func init() {
+    rand.NewSource(time.Now().UnixNano())
+    log.Println("Initialized Rand...")
+}
+
+func main() {
+    // Create a channel for processing messages
+    messages := make(chan string)
+
+    // Set up rate limiting
+    rateLimit := 500 * time.Millisecond // Limit to 1 message per second
+    ticker := time.NewTicker(rateLimit)
+    defer ticker.Stop()
+
+    // Simulate sending messages
+    go func() {
+        for i := 0; i < 100; i++ {
+            messages <- randomString(16)
+        }
+        close(messages)
+    }()
+
+    // Process messages with rate limiting
+    for msg := range messages {
+        <-ticker.C // Wait for the next tick
+        fmt.Println("Processed:", msg)
+    }
+}
 ```

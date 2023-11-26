@@ -9486,3 +9486,107 @@ func main() {
     }
 }
 ```
+
+#### Another Way To Process The Data From Channel Based Off Boolean Variable
+
+> Please check the comments in the code below 🙂
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "math/rand"
+    "time"
+)
+
+// randomString generates a random alphanumeric string of length n.
+func randomString(n int) string {
+    const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    b := make([]byte, n)
+    for i := range b {
+        b[i] = letterBytes[rand.Intn(len(letterBytes))]
+    }
+    return string(b)
+}
+
+func init() {
+    rand.NewSource(time.Now().UnixNano())
+    log.Println("Initialized Rand...")
+}
+
+func main() {
+    processData := false // boolean to check : whether to process data
+
+    // Create a channel for processing messages
+    messages := make(chan string)
+
+    // Set up rate limiting
+    rateLimit := 100 * time.Millisecond // Limit to 1 message per second
+    ticker := time.NewTicker(rateLimit)
+    defer ticker.Stop()
+
+    // Simulate sending messages
+    go func() {
+        for i := 0; i < 50; i++ {
+            messages <- randomString(16)
+        }
+        close(messages)
+    }()
+
+    // after 10 secs have passed, set processData = true,
+    // so that we can start consuming messages from channel
+    now := time.Now()
+    go func() {
+        for {
+            elapsed := time.Since(now)
+            if elapsed.Seconds() > float64(10) {
+                processData = true
+                break
+            } else {
+                log.Println("Slept for 1 sec done...")
+                time.Sleep(1 * time.Second)
+            }
+        }
+    }()
+
+    channelClose := false
+
+    // method-1 of consuming messages from the above channel
+
+    for {
+        if processData {
+            select {
+            case data, ok := <-messages:
+                if !ok {
+                    channelClose = true // we set this to true once we get to know that (messages) channel is closed
+                    // Important !
+                    // the 'break' below >>
+                    // will only break out of select
+                    // and not the (for loop) on the outside
+                    // for {
+                    //    ...
+                    //    ...
+                    // }
+                    break
+                }
+                <-ticker.C // Wait for the next tick
+                fmt.Println("Processed:", data)
+            }
+        }
+        // this break is needed to (break) out for the parent for loop
+        if channelClose {
+            break
+        }
+    }
+
+    // method-2 of consuming messages from the above channel
+
+    // Process messages with rate limiting
+    //for msg := range messages {
+    //  <-ticker.C // Wait for the next tick
+    //  fmt.Println("Processed:", msg)
+    //}
+}
+```

@@ -9551,7 +9551,7 @@ func main() {
         }
     }()
 
-    channelClose := false
+    channelIsClosed := false
 
     // method-1 of consuming messages from the above channel
 
@@ -9560,7 +9560,7 @@ func main() {
             select {
             case data, ok := <-messages:
                 if !ok {
-                    channelClose = true // we set this to true once we get to know that (messages) channel is closed
+                    channelIsClosed = true // we set this to true once we get to know that (messages) channel is closed
                     // Important !
                     // the 'break' below >>
                     // will only break out of select
@@ -9576,7 +9576,7 @@ func main() {
             }
         }
         // this break is needed to (break) out for the parent for loop
-        if channelClose {
+        if channelIsClosed {
             break
         }
     }

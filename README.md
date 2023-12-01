@@ -9596,9 +9596,10 @@ func main() {
 #### [Using Interfaces To Make Things Generic](#using-interfaces-to-make-things-generic)
 
 ```
-In Go, while you cannot directly pass a function with any type and number of arguments using interfaces
-without using reflection, you can design your program in a way that leverages interfaces to provide a
-similar level of flexibility and abstraction.
+In Go, while you cannot directly pass a function with any type and number of 
+arguments using interfaces without using reflection, you can design your 
+program in a way that leverages interfaces to provide a similar level of 
+flexibility and abstraction.
 
 This typically involves defining an interface that your functions adhere to.
 
@@ -9610,10 +9611,12 @@ This interface will have a method that your functions will be required to implem
 
 Explanation
 
-  - We define an Operation interface with a single method Execute that returns an interface{}.
+  - We define an Operation interface with a single method 
+    Execute that returns an interface{}.
     This allows Execute to return any type.
 
-  - AddOperation and ConcatOperation are struct types that implement the Operation interface.
+  - AddOperation and ConcatOperation are struct types that implement 
+    the Operation interface.
     Each has an Execute method that performs its specific operation.
 
   - The performOperation function takes any Operation and calls its Execute method.
@@ -9625,8 +9628,9 @@ Advantages
   - Flexibility: It’s flexible in that any type that implements the
     Operation interface can be passed to performOperation.
 
-  - Readability and Maintainability: This approach is more in line with Go’s philosophy and
-    results in more readable and maintainable code compared to using reflection.
+  - Readability and Maintainability: This approach is more 
+    in line with Go’s philosophy and results in more readable and 
+    maintainable code compared to using reflection.
 
 Limitations
 
@@ -9636,8 +9640,9 @@ Limitations
   - The Execute method needs to handle the operation’s logic internally,
     which might be less flexible than passing any function directly.
 
-This approach is more idiomatic in Go. 
-It leverages interfaces for polymorphism, leading to code that is easier to understand and maintain.
+  This approach is more idiomatic in Go. 
+  It leverages interfaces for polymorphism, leading to code that is 
+  easier to understand and maintain.
 ```
 
 `main.go`

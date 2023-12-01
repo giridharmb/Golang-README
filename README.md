@@ -134,6 +134,8 @@
 
 [Rate Limiting On Channel](#rate-limiting-on-channel)
 
+[Using Interfaces To Make Things Generic](#using-interfaces-to-make-things-generic)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -9589,4 +9591,111 @@ func main() {
     //  fmt.Println("Processed:", msg)
     //}
 }
+```
+
+#### [Using Interfaces To Make Things Generic](#using-interfaces-to-make-things-generic)
+
+```
+In Go, while you cannot directly pass a function with any type and number of arguments using interfaces
+without using reflection, you can design your program in a way that leverages interfaces to provide a
+similar level of flexibility and abstraction.
+
+This typically involves defining an interface that your functions adhere to.
+
+# Using an Interface with a Method
+
+Let’s create an example where different types implement the same interface.
+
+This interface will have a method that your functions will be required to implement.
+
+Explanation
+
+  - We define an Operation interface with a single method Execute that returns an interface{}.
+    This allows Execute to return any type.
+
+  - AddOperation and ConcatOperation are struct types that implement the Operation interface.
+    Each has an Execute method that performs its specific operation.
+
+  - The performOperation function takes any Operation and calls its Execute method.
+
+Advantages
+
+  - Type Safety: This approach keeps Go’s type safety intact.
+
+  - Flexibility: It’s flexible in that any type that implements the
+    Operation interface can be passed to performOperation.
+
+  - Readability and Maintainability: This approach is more in line with Go’s philosophy and
+    results in more readable and maintainable code compared to using reflection.
+
+Limitations
+
+  - Each operation needs to be predefined and implement the Operation interface.
+    You can’t pass arbitrary functions directly.
+
+  - The Execute method needs to handle the operation’s logic internally,
+    which might be less flexible than passing any function directly.
+
+This approach is more idiomatic in Go. 
+It leverages interfaces for polymorphism, leading to code that is easier to understand and maintain.
+```
+
+`main.go`
+
+```go
+package main
+
+import "fmt"
+
+type IOperation interface {
+    Execute() interface{}
+}
+
+type DataAdd struct {
+    Num1 int
+    Num2 int
+}
+
+type DataConcat struct {
+    Str1 string
+    Str2 string
+}
+
+func (data DataAdd) Execute() interface{} {
+    return data.Num1 + data.Num2
+}
+
+func (data DataConcat) Execute() interface{} {
+    return fmt.Sprintf("%v-%v", data.Str1, data.Str2)
+}
+
+func performOperation(op IOperation) {
+    result := op.Execute()
+    fmt.Println("result :", result)
+}
+
+func main() {
+    data1 := DataAdd{
+        Num1: 10,
+        Num2: 20,
+    }
+
+    performOperation(data1)
+
+    data2 := DataConcat{
+        Str1: "hello",
+        Str2: "world",
+    }
+
+    performOperation(data2)
+}
+```
+
+Output
+
+```bash
+go run main.go
+
+result : 30
+result : hello-world
 ```

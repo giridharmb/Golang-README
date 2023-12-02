@@ -136,6 +136,8 @@
 
 [Using Interfaces To Make Things Generic](#using-interfaces-to-make-things-generic)
 
+[Generic HTTP Request V3](#generic-http-request-v3)
+
 <hr/>
 
 #### [Server Sent Events](#server-sent-events)
@@ -9703,4 +9705,505 @@ go run main.go
 
 result : 30
 result : hello-world
+```
+
+#### [Generic HTTP Request V3](#generic-http-request-v3)
+
+This is little more generic than V1 and V2 which is above, & used `gjson` for parsing JSON.
+
+`main.go`
+
+```go
+package main
+
+import (
+    "bytes"
+    "crypto/tls"
+    "encoding/json"
+    "errors"
+    "fmt"
+    "github.com/tidwall/gjson"
+    "io"
+    "math/rand"
+    "net"
+    "net/http"
+    "net/url"
+    "os"
+    "time"
+
+    log "github.com/sirupsen/logrus"
+)
+
+type HttpRequestType int64
+
+const (
+    GET HttpRequestType = iota
+    HEAD
+    POST
+    PUT
+    PATCH
+    DELETE
+)
+
+type RequestMap struct {
+    URL           string                 // some (https://...) URL
+    Payload       map[string]interface{} // you are expected to set this as a string or map[string]interface{}
+    RequestMethod HttpRequestType        // GET, POST, PUT etc
+    Headers       map[string]interface{} // you are expected to set this as a string or map[string]string
+    ProxyURL      string                 // optional
+}
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+var (
+    HttpTLSTimeOut    time.Duration = 10 // 10 seconds
+    MyHttpProxyServer string        = "https://my-proxy-server.company.com:5050"
+)
+
+//-------------------------------------------------------------------------
+
+func PrettyPrint(data interface{}) {
+    dataMap, ok := data.(map[string]interface{})
+    if ok {
+        dataBytes, _ := json.MarshalIndent(dataMap, "", "    ")
+        fmt.Printf("\n\ndata:\n\n%v\n\n", string(dataBytes))
+    } else {
+        fmt.Printf("\n\ndata:\n\n%v\n\n", data)
+    }
+}
+
+//-------------------------------------------------------------------------
+
+func GetMap(s string) (map[string]interface{}, error) {
+    var msg string
+    var jsonMap map[string]interface{}
+    err := json.Unmarshal([]byte(s), &jsonMap)
+    if err != nil {
+        msg = fmt.Sprintf("could not Unmarshal (json.Unmarshal) []bytes(s) to -> Map : %v", err.Error())
+        log.Printf(msg)
+        return nil, errors.New(msg)
+    }
+    return jsonMap, nil
+}
+
+func GetString(m map[string]interface{}) (string, error) {
+    msg := ""
+    dataBytes, err := json.Marshal(m)
+    if err != nil {
+        msg = fmt.Sprintf("could not marshal (json.Marshal) to -> []bytes  : %v", err.Error())
+        log.Printf(msg)
+        return "", errors.New(msg)
+    }
+    dataBytesStr := string(dataBytes)
+    return string(dataBytesStr), nil
+}
+
+func IsStringJSON(str string) bool {
+    var js json.RawMessage
+    return json.Unmarshal([]byte(str), &js) == nil
+}
+
+//-------------------------------------------------------------------------
+
+func (r HttpRequestType) String() string {
+    switch r {
+    case GET:
+        return "GET"
+    case HEAD:
+        return "HEAD"
+    case POST:
+        return "POST"
+    case PUT:
+        return "PUT"
+    case PATCH:
+        return "PATCH"
+    case DELETE:
+        return "DELETE"
+    }
+    return "UNKNOWN"
+}
+
+//-------------------------------------------------------------------------
+
+func GetJsonStr(data interface{}) (string, error) {
+    returnStr := ""
+
+    _, ok := data.(map[string]interface{})
+    if !ok {
+        return returnStr, errors.New("data is a valid json (map[string]interface{})")
+    }
+
+    dataBytes, err := json.Marshal(data)
+    if err != nil {
+        return returnStr, errors.New("data is not json string (json.Marshal failed)")
+    }
+    dataBytesStr := string(dataBytes)
+
+    return dataBytesStr, nil
+}
+
+//-------------------------------------------------------------------------
+
+func initRand() {
+    rand.NewSource(time.Now().UnixNano())
+}
+
+func RandStringRunes(n int) string {
+    initRand()
+    b := make([]rune, n)
+    for i := range b {
+        b[i] = letterRunes[rand.Intn(len(letterRunes))]
+    }
+    return string(b)
+}
+
+//---------------------------------------------------------------------------
+
+func (r RequestMap) HTTPRequest() (string, int, error) {
+    log.Printf("URL            : %v", r.URL)
+    log.Printf("Payload        : %v", r.Payload)
+    log.Printf("RequestMethod  : %v", r.RequestMethod)
+    log.Printf("Headers        : %v", r.Headers)
+
+    responseString := ""
+    responseHttpStatusCode := -1
+
+    //var headersMap map[string]interface{}
+    var req *http.Request
+    var err error
+    var message string
+
+    var tr *http.Transport
+
+    var payloadStr string
+
+    // ---- r.Payload : should be a JSON string or map[string]interface{} ------
+
+    payloadStr, err = GetJsonStr(r.Payload)
+    if err != nil {
+        message = fmt.Sprintf("r.Payload : %v", err.Error())
+        log.Error(message)
+        return responseString, responseHttpStatusCode, errors.New(message)
+    }
+
+    tr = CreateHttpTransport(r.ProxyURL)
+
+    req, err = CreateHttpRequest(r.RequestMethod, payloadStr, r.URL)
+    if err != nil {
+        message = fmt.Sprintf("forming http request error : %v", err.Error())
+        log.Printf(message)
+        return responseString, responseHttpStatusCode, errors.New(message)
+    }
+
+    // ---- r.Headers : should be a JSON string or map[string]string ------
+
+    err = SetHeaders(r.Headers, req)
+    if err != nil {
+        message = fmt.Sprintf("error in setting headers : %v", err.Error())
+        log.Printf(message)
+        return responseString, responseHttpStatusCode, errors.New(message)
+    }
+
+    responseString, responseHttpStatusCode, err = PerformHttpRequest(req, tr)
+    if err != nil {
+        message = fmt.Sprintf("error in HttpRequest : %v", err.Error())
+        log.Printf(message)
+        return responseString, responseHttpStatusCode, errors.New(message)
+    }
+
+    return responseString, responseHttpStatusCode, nil
+}
+
+func PerformHttpRequest(req *http.Request, tr *http.Transport) (responseString string, responseHttpStatusCode int, err error) {
+    message := ""
+
+    responseString = ""
+    responseHttpStatusCode = -1
+    err = nil
+
+    client := &http.Client{Transport: tr}
+
+    resp, err := client.Do(req)
+    if err != nil {
+        message = fmt.Sprintf("http client could not execute a http request : %v", err.Error())
+        log.Error(message)
+        return responseString, responseHttpStatusCode, errors.New(message)
+    }
+    defer func() {
+        _ = resp.Body.Close()
+    }()
+
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        message = fmt.Sprintf("could not read http response body : %v", err.Error())
+        log.Error(message)
+        return responseString, responseHttpStatusCode, errors.New(message)
+    }
+    // convert body to string
+    responseString = string(body)
+    responseHttpStatusCode = resp.StatusCode
+    return responseString, responseHttpStatusCode, nil
+}
+
+func CreateHttpRequest(httpRequestType HttpRequestType, jsonPayload string, httpURL string) (*http.Request, error) {
+    var err error
+    var req *http.Request
+    message := ""
+
+    if jsonPayload == "" {
+        req, err = http.NewRequest(httpRequestType.String(), httpURL, nil)
+        if err != nil {
+            message = fmt.Sprintf("could not create a new http request : %v", err.Error())
+            log.Error(message)
+            return req, errors.New(message)
+        }
+    } else {
+        req, err = http.NewRequest(httpRequestType.String(), httpURL, bytes.NewBuffer([]byte(jsonPayload)))
+        if err != nil {
+            message = fmt.Sprintf("could not create a new http request : %v", err.Error())
+            log.Error(message)
+            return req, errors.New(message)
+        }
+    }
+    return req, nil
+}
+
+func CreateHttpTransport(proxyURL string) *http.Transport {
+    var tr *http.Transport
+    if proxyURL == "" {
+        tr = &http.Transport{
+            TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+            DialContext: (&net.Dialer{
+                Timeout:   0,
+                KeepAlive: 0,
+            }).DialContext,
+            TLSHandshakeTimeout: HttpTLSTimeOut * time.Second,
+        }
+    } else {
+        proxyUrl, _ := url.Parse(proxyURL)
+        tr = &http.Transport{
+            TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+            DialContext: (&net.Dialer{
+                Timeout:   0,
+                KeepAlive: 0,
+            }).DialContext,
+            Proxy:               http.ProxyURL(proxyUrl),
+            TLSHandshakeTimeout: HttpTLSTimeOut * time.Second,
+        }
+    }
+    return tr
+}
+
+func SetHeaders(headers interface{}, req *http.Request) error {
+    var headersMap map[string]interface{}
+    message := ""
+    headersStr, err := GetJsonStr(headers)
+    if err != nil {
+        message = fmt.Sprintf("could not get json data from headers (interface{}) : %v", err.Error())
+        log.Printf(message)
+        return errors.New(message)
+    }
+    // no headers to set
+    if headersStr == "" {
+        return nil
+    }
+
+    err = json.Unmarshal([]byte(headersStr), &headersMap)
+    if err != nil {
+        message = fmt.Sprintf("could not unmarshal headers json string : %v", err.Error())
+        log.Printf(message)
+        return errors.New(message)
+    }
+
+    if len(headersMap) != 0 {
+        for key, value := range headersMap {
+            valueStr, ok := value.(string)
+            if !ok {
+                continue
+            }
+            req.Header.Set(key, valueStr)
+        }
+    }
+    req.Header.Set("Connection", "close")
+    return nil
+}
+
+func GetDefaultHeaders() map[string]interface{} {
+    goRestToken := os.Getenv("GO_REST_TOKEN")
+    headers := map[string]interface{}{
+        "Authorization": "Bearer " + goRestToken,
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+    return headers
+}
+
+/*
+Refer to this : https://gorest.co.in/
+*/
+
+func main() {
+
+    // --------- use-case-0 : first delete all existing users -------------
+
+    log.Printf("@ GET USERS (HTTP GET) ...")
+
+    request := RequestMap{
+        URL:           "https://gorest.co.in/public/v2/users?page=1",
+        Payload:       nil,
+        RequestMethod: GET,
+        Headers:       GetDefaultHeaders(),
+        ProxyURL:      "",
+    }
+
+    response, responseStatusCode, err := request.HTTPRequest()
+    if err != nil {
+        log.Print(err)
+        return
+    }
+    log.Printf("response : %v", response)
+    log.Printf("responseStatusCode : %v", responseStatusCode)
+
+    result := gjson.Get(response, "#.id")
+
+    for _, id := range result.Array() {
+
+        log.Printf("@ DELETE (HTTP DELETE) USER ...")
+
+        userURL := fmt.Sprintf(`https://gorest.co.in/public/v2/users/%v`, id.String())
+
+        log.Println("Deleting User :", userURL)
+
+        request = RequestMap{
+            URL:           userURL,
+            Payload:       nil,
+            RequestMethod: DELETE,
+            Headers:       GetDefaultHeaders(),
+            ProxyURL:      "",
+        }
+
+        response, responseStatusCode, err = request.HTTPRequest()
+        if err != nil {
+            log.Print(err)
+            return
+        }
+        log.Printf("response : %v", response)
+        log.Printf("responseStatusCode : %v", responseStatusCode)
+    }
+
+    // --------- use-case-1 : get list of users -------------
+
+    log.Printf("@ GET USERS (HTTP GET) ...")
+
+    request = RequestMap{
+        URL:           "https://gorest.co.in/public/v2/users?page=1",
+        Payload:       nil,
+        RequestMethod: GET,
+        Headers:       GetDefaultHeaders(),
+        ProxyURL:      "",
+    }
+
+    response, responseStatusCode, err = request.HTTPRequest()
+    if err != nil {
+        log.Print(err)
+        return
+    }
+    log.Printf("response : %v", response)
+    log.Printf("responseStatusCode : %v", responseStatusCode)
+
+    // --------- use-case-2 : create user -------------
+
+    log.Printf("@ CREATE USER (HTTP POST) ...")
+
+    // example of using map[string]interface{} (json) -> for payload
+
+    payload1 := make(map[string]interface{})
+    payload1["name"] = "Linus"
+    payload1["gender"] = "male"
+    payload1["email"] = "linus.torvalds@foo.com"
+    payload1["status"] = "active"
+    payload1["age"] = 55
+
+    log.Printf("payload1 : %v", payload1)
+
+    request = RequestMap{
+        URL:           "https://gorest.co.in/public/v2/users",
+        Payload:       payload1,
+        RequestMethod: POST,
+        Headers:       GetDefaultHeaders(),
+        ProxyURL:      "",
+    }
+
+    response, responseStatusCode, err = request.HTTPRequest()
+    if err != nil {
+        log.Print(err)
+        return
+    }
+    log.Printf("response : %v", response)
+    log.Printf("responseStatusCode : %v", responseStatusCode)
+
+    userId := gjson.Get(response, "id")
+
+    if !userId.Exists() {
+        log.Println("userId does not exist ! user was not created !")
+    }
+
+    // --------- use-case-3 : update/patch user -------------
+
+    randomStr := RandStringRunes(5)
+
+    log.Printf("@ UDPATE (HTTP PATCH) USER ...")
+
+    // example of using map[string]interface{} (json) -> for payload
+
+    payloadMap := make(map[string]interface{})
+    payloadMap["name"] = "Linus Torvalds (NEW)"
+    payloadMap["gender"] = "male"
+    payloadMap["email"] = fmt.Sprintf(`linux-torvalds@%v.com`, randomStr)
+    payloadMap["status"] = "active"
+
+    userID := userId.String()
+
+    userURL := fmt.Sprintf(`https://gorest.co.in/public/v2/users/%v`, userID)
+
+    log.Printf("userURL %v", userURL)
+
+    request = RequestMap{
+        URL:           userURL,
+        Payload:       payloadMap,
+        RequestMethod: PATCH,
+        Headers:       GetDefaultHeaders(),
+        ProxyURL:      "",
+    }
+
+    response, responseStatusCode, err = request.HTTPRequest()
+    if err != nil {
+        log.Print(err)
+        return
+    }
+    log.Printf("response : %v", response)
+    log.Printf("responseStatusCode : %v", responseStatusCode)
+
+    // --------- use-case-4 : delete user -------------
+
+    log.Printf("@ DELETE (HTTP DELETE) USER ...")
+
+    userURL = fmt.Sprintf(`https://gorest.co.in/public/v2/users/%v`, userID)
+
+    request = RequestMap{
+        URL:           userURL,
+        Payload:       payloadMap,
+        RequestMethod: DELETE,
+        Headers:       GetDefaultHeaders(),
+        ProxyURL:      "",
+    }
+
+    response, responseStatusCode, err = request.HTTPRequest()
+    if err != nil {
+        log.Print(err)
+        return
+    }
+    log.Printf("response : %v", response)
+    log.Printf("responseStatusCode : %v", responseStatusCode)
+}
 ```

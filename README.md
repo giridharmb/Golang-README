@@ -7401,7 +7401,7 @@ func main() {
 </html>
 ```
 
-Autmatically Reconnect WebSocket
+Automatically Reconnect WebSocket
 
 ```html
 <!DOCTYPE html>

@@ -1,5 +1,7 @@
 ### Golang Snippets
 
+[Go Build For Linux x86-64](#go-build-for-linux-x86-64)
+
 [Server Sent Events](#server-sent-events)
 
 [Golang Sessions](#golang-sessions)
@@ -139,6 +141,12 @@
 [Generic HTTP Request V3](#generic-http-request-v3)
 
 <hr/>
+
+#### [Go Build For Linux x86-64](#go-build-for-linux-x86-64)
+
+```bash
+env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o my_app
+```
 
 #### [Server Sent Events](#server-sent-events)
 

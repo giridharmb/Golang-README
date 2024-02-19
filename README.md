@@ -140,6 +140,8 @@
 
 [Generic HTTP Request V3](#generic-http-request-v3)
 
+[JSON String To Map And Map To JSON String](#json-string-to-map-and-map-to-json-string)
+
 <hr/>
 
 #### [Go Build For Linux x86-64](#go-build-for-linux-x86-64)
@@ -10213,5 +10215,44 @@ func main() {
     }
     log.Printf("response : %v", response)
     log.Printf("responseStatusCode : %v", responseStatusCode)
+}
+```
+
+#### [JSON String To Map And Map To JSON String](#json-string-to-map-and-map-to-json-string)
+
+```go
+func GetString(data interface{}) (string, error) {
+    msg := ""
+    jsonData, err := json.Marshal(data)
+    if err != nil {
+        msg = fmt.Sprintf("error : GetString : could not marshal data (json interface{}) -> (json string) : %v", err.Error())
+        fmt.Printf("\n@ %v\n", msg)
+        return "", errors.New(msg)
+    }
+    jsonStr := string(jsonData)
+    return jsonStr, nil
+}
+
+func GetMap(jsonString string) (map[string]interface{}, error) {
+    msg := ""
+    var result map[string]interface{}
+    err := json.Unmarshal([]byte(jsonString), &result)
+    if err != nil {
+        msg = fmt.Sprintf("error : GetMap : could not unmarshal data (json string) -> (json map[string]interface{}) : %v", err.Error())
+        fmt.Printf("\n@ %v\n", msg)
+        return nil, errors.New(msg)
+    }
+    return result, nil
+}
+
+func PrettyPrintData(data interface{}) {
+    msg := ""
+    dataBytes, err := json.MarshalIndent(data, "", "    ")
+    if err != nil {
+        msg = fmt.Sprintf("error : could not PrettyPrintData json data : %v", err.Error())
+        fmt.Printf("\n@ %v\n", msg)
+        return
+    }
+    fmt.Printf("\n@ json_data:\n\n%v\n\n", string(dataBytes))
 }
 ```

@@ -10255,4 +10255,30 @@ func PrettyPrintData(data interface{}) {
     }
     fmt.Printf("\n@ json_data:\n\n%v\n\n", string(dataBytes))
 }
+
+func SaveMapToFile(filePath string, data interface{}) error {
+    msg := ""
+    jsonData, err := json.MarshalIndent(data, "", "    ")
+    if err != nil {
+        msg = fmt.Sprintf("error : SaveMapToFile : json.MarshalIndent : %v", err.Error())
+        fmt.Printf("\n@ %v\n", msg)
+        return errors.New(msg)
+    }
+    file, fileErr := os.Create(filePath)
+    if fileErr != nil {
+        msg = fmt.Sprintf("error : SaveMapToFile : os.Create : %v", fileErr.Error())
+        fmt.Printf("\n@ %v\n", msg)
+        return errors.New(msg)
+    }
+    defer func() {
+        _ = file.Close()
+    }()
+    _, writeErr := file.Write(jsonData)
+    if writeErr != nil {
+        msg = fmt.Sprintf("error : SaveMapToFile : file.Write : %v", writeErr.Error())
+        fmt.Printf("\n@ %v\n", msg)
+        return errors.New(msg)
+    }
+    return nil
+}
 ```

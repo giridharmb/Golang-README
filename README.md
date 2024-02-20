@@ -142,6 +142,8 @@
 
 [JSON String To Map And Map To JSON String](#json-string-to-map-and-map-to-json-string)
 
+[GCP StackDriver Logging](#gcp-stackdriver-logging)
+
 <hr/>
 
 #### [Go Build For Linux x86-64](#go-build-for-linux-x86-64)
@@ -10280,5 +10282,68 @@ func SaveMapToFile(filePath string, data interface{}) error {
         return errors.New(msg)
     }
     return nil
+}
+```
+
+#### [GCP StackDriver Logging](#gcp-stackdriver-logging)
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your/service-account-file.json"
+```
+
+```bash
+go get -u cloud.google.com/go/logging
+```
+
+```go
+package main
+
+import (
+    "cloud.google.com/go/logging"
+    "context"
+    "log"
+    "os"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // Set your Google Cloud Project ID
+    projectID := "your-google-cloud-project-id"
+
+    // Creates a client.
+    client, err := logging.NewClient(ctx, projectID)
+    if err != nil {
+        log.Fatalf("Failed to create client: %v", err)
+    }
+    defer client.Close()
+
+    // Retrieves the system's hostname
+    hostname, err := os.Hostname()
+    if err != nil {
+        log.Fatalf("Failed to get hostname: %v", err)
+    }
+
+    // Selects the log to write to
+    logger := client.Logger("my-log")
+
+    // Sets the entry data that includes the system's hostname
+    entry := logging.Entry{
+        Payload:  "Hello, world!",
+        Severity: logging.Info,
+        Labels: map[string]string{
+            "hostname": hostname,
+        },
+    }
+
+    // Adds an entry to the log
+    logger.Log(entry)
+
+    // OPTIONAL: Flushes pending log entries
+    if err := client.Close(); err != nil {
+        log.Fatalf("Failed to close client: %v", err)
+    }
+
+    log.Println("Logged entry with hostname to Stackdriver")
 }
 ```

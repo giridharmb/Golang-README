@@ -144,6 +144,8 @@
 
 [GCP StackDriver Logging](#gcp-stackdriver-logging)
 
+[Prometheus Graph And Metrics Using System Load Average](#prometheus-graph-and-metrics-using-system-load-average)
+
 <hr/>
 
 #### [Go Build For Linux x86-64](#go-build-for-linux-x86-64)
@@ -10347,3 +10349,88 @@ func main() {
     log.Println("Logged entry with hostname to Stackdriver")
 }
 ```
+
+#### [Prometheus Graph And Metrics Using System Load Average](#prometheus-graph-and-metrics-using-system-load-average)
+
+`IP_ADDRESS_OF_HOST` -> Machine From Which Metrics Are Being Gathers & Emitted
+
+```bash
+docker pull prom/prometheus
+```
+
+`prometheus.yml`
+
+```yaml
+scrape_configs:
+  - job_name: 'myapp'
+    static_configs:
+      - targets: ['IP_ADDRESS_OF_HOST:8888']
+```
+
+```bash
+docker run -p 9090:9090 -v ~/goworkspace/src/prom-gen/prometheus.yml:/etc/prometheus/prometheus.yml prom/prometheus
+```
+
+`main.go` (Run On Machine Where Metrics Are Being Gathers And Sent To Prometheus Server)
+
+```go
+package main
+
+import (
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/promauto"
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+    "github.com/shirou/gopsutil/load"
+    "log"
+    "net/http"
+    "time"
+)
+
+var (
+    GaugeLoadAverage1m = promauto.NewGauge(prometheus.GaugeOpts{
+        Name: "load_average_1m",
+        Help: "Load Average 1 Minute",
+    })
+
+    GaugeLoadAverage5m = promauto.NewGauge(prometheus.GaugeOpts{
+        Name: "load_average_5m",
+        Help: "Load Average 5 Minute",
+    })
+
+    GaugeLoadAverage15m = promauto.NewGauge(prometheus.GaugeOpts{
+        Name: "load_average_15m",
+        Help: "Load Average 15 Minute",
+    })
+)
+
+func main() {
+
+    //avg, err := load.Avg()
+    //if err != nil {
+    //  log.Printf("Could not get load average: %v", err)
+    //  return
+    //}
+
+    //fmt.Printf("Load Average: 1m: %.2f, 5m: %.2f, 15m: %.2f\n", avg.Load1, avg.Load5, avg.Load15)
+
+    // Increment the counter.
+    go func() {
+        for {
+            avg, _ := load.Avg()
+
+            log.Printf("avg : %v", avg.String())
+
+            GaugeLoadAverage1m.Set(avg.Load1)
+            GaugeLoadAverage5m.Set(avg.Load1)
+            GaugeLoadAverage15m.Set(avg.Load1)
+
+            time.Sleep(2 * time.Second)
+        }
+    }()
+
+    // Expose the registered metrics via HTTP.
+    http.Handle("/metrics", promhttp.Handler())
+    http.ListenAndServe("IP_ADDRESS_OF_HOST:8888", nil)
+}
+```
+

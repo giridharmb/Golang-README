@@ -10352,7 +10352,7 @@ func main() {
 
 #### [Prometheus Graph And Metrics Using System Load Average](#prometheus-graph-and-metrics-using-system-load-average)
 
-`IP_ADDRESS_OF_HOST` -> Machine From Which Metrics Are Being Gathers & Emitted
+`IP_ADDRESS_OF_HOST` -> Machine From Which Metrics Are Being Gathered & Emitted
 
 ```bash
 docker pull prom/prometheus

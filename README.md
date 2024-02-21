@@ -10421,8 +10421,8 @@ func main() {
             log.Printf("avg : %v", avg.String())
 
             GaugeLoadAverage1m.Set(avg.Load1)
-            GaugeLoadAverage5m.Set(avg.Load1)
-            GaugeLoadAverage15m.Set(avg.Load1)
+            GaugeLoadAverage5m.Set(avg.Load5)
+            GaugeLoadAverage15m.Set(avg.Load15)
 
             time.Sleep(2 * time.Second)
         }

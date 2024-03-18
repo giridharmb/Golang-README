@@ -148,8 +148,6 @@
 
 [GCP StackDriver Metrics](#gcp-stackdriver-metrics)
 
-[GCP BigQuery Fetch And Insert]()
-
 #### [GCP BigQuery Fetch And Insert](https://github.com/giridharmb/gcp-big-query/blob/main/README.md)
 
 <hr/>

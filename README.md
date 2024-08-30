@@ -152,6 +152,10 @@
 
 [StackDriver Uber Zap Logging](#stackdriver-uber-zap-logging)
 
+[Uber Zap Logging](#uber-zap-logging)
+
+[GCP StackDriver Logger](#gcp-stackdriver-logger)
+
 <hr/>
 
 #### [Go Build For Linux x86-64](#go-build-for-linux-x86-64)
@@ -10471,7 +10475,7 @@ func main() {
     }
 
     // Sets your Google Cloud Platform project ID.
-    projectID := "private-cloud-compute"
+    projectID := "my-gcp-project"
 
     // Prepares an individual data point
     dataPoint := &monitoringpb.Point{
@@ -10655,5 +10659,173 @@ func main() {
     }{ID: 42, Error: "Something went wrong"})
 
     fmt.Println("Logs have been sent to the configured log destinations.")
+}
+```
+
+#### [Uber Zap Logging](#uber-zap-logging)
+
+```go
+package main
+
+/*
+
+go get go.uber.org/zap
+
+*/
+
+import (
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
+
+type User struct {
+	ID    int
+	Name  string
+	Email string
+}
+
+func main() {
+	// Create a custom logger configuration
+	config := zap.NewProductionConfig()
+
+	// Use the console encoder without colorization
+	config.EncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder // No color
+
+	logger, err := config.Build()
+	if err != nil {
+		panic(err)
+	}
+	defer logger.Sync()
+
+	// Logging at different levels
+
+	// Debug level logging
+	logger.Debug("This is a debug message", zap.String("module", "main"))
+
+	// Info level logging
+	logger.Info("This is an info message", zap.String("module", "main"))
+
+	// Error level logging with a stack trace
+	logger.Error("This is an error message with a stack trace", zap.String("module", "main"), zap.Stack("stacktrace"))
+
+	// Logging a struct
+	user := User{
+		ID:    1,
+		Name:  "John Doe",
+		Email: "john.doe@example.com",
+	}
+
+	logger.Info("Logging a user struct",
+		zap.Int("ID", user.ID),
+		zap.String("Name", user.Name),
+		zap.String("Email", user.Email),
+	)
+
+	// Logging a struct with zap.Any (for arbitrary types)
+	logger.Info("Logging a user struct with zap.Any", zap.Any("user", user))
+
+	// Generate a sample stack trace
+	logger.Error("This is another error with a stack trace",
+		zap.Stack("stacktrace"),
+	)
+}
+```
+
+#### [GCP StackDriver Logger](#gcp-stackdriver-logger)
+
+```go
+package main
+
+// package applogger
+
+/*
+go get -u -v cloud.google.com/go/logging
+*/
+
+/*
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your/service-account-file.json"
+*/
+
+import (
+	"cloud.google.com/go/logging"
+	"context"
+	"fmt"
+	"log"
+	"os"
+)
+
+var AppLogger *logging.Logger
+
+func main() {
+	ctx := context.Background()
+
+	// Set your Google Cloud Project ID
+	projectID := "my-gcp-project"
+
+	// Creates a client.
+	client, err := logging.NewClient(ctx, projectID)
+	if err != nil {
+		log.Fatalf("Failed to create client: %v", err)
+	}
+	defer client.Close()
+
+	// Retrieves the system's hostname
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("Failed to get hostname: %v", err)
+	}
+
+	// Selects the log to write to
+	AppLogger = client.Logger("my-app")
+
+	// Sets the entry data that includes the system's hostname
+	msg1 := "some message_1"
+	myStr1 := fmt.Sprintf("Hello, world! >> INFO : %v", msg1)
+	entry := logging.Entry{
+		Payload:  myStr1,
+		Severity: logging.Info,
+		Labels: map[string]string{
+			"hostname": hostname,
+		},
+	}
+
+	msg2 := "some message_2"
+	myStr2 := fmt.Sprintf("Hello, world! >> DEBUG : %v", msg2)
+
+	entry2 := logging.Entry{
+		Payload:  myStr2,
+		Severity: logging.Debug,
+		Labels: map[string]string{
+			"hostname": hostname,
+		},
+	}
+
+	// Adds an entry to the log
+	AppLogger.Log(entry)
+	AppLogger.Log(entry2)
+
+	DoOtherLogging()
+
+	// OPTIONAL: Flushes pending log entries
+	if err := client.Close(); err != nil {
+		log.Fatalf("Failed to close client: %v", err)
+	}
+
+	log.Println("Logged entry with hostname to Stackdriver")
+}
+
+func DoOtherLogging() {
+	msg3 := "some message_2"
+	myStr3 := fmt.Sprintf("Hello, world! >> ERROR : %v", msg3)
+
+	entry3 := logging.Entry{
+		Payload:  myStr3,
+		Severity: logging.Error,
+		Labels: map[string]string{
+			"hostname": "some_random_hostname",
+		},
+	}
+
+	AppLogger.Log(entry3)
 }
 ```

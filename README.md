@@ -150,6 +150,8 @@
 
 #### [GCP BigQuery Fetch And Insert](https://github.com/giridharmb/gcp-big-query/blob/main/README.md)
 
+[StackDriver Uber Zap Logging](#stackdriver-uber-zap-logging)
+
 <hr/>
 
 #### [Go Build For Linux x86-64](#go-build-for-linux-x86-64)
@@ -10517,5 +10519,141 @@ func main() {
     }
 
     fmt.Printf("Done writing time series data.\n")
+}
+```
+
+#### [StackDriver Uber Zap Logging](#stackdriver-uber-zap-logging)
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+
+    "cloud.google.com/go/logging"
+    "go.uber.org/zap"
+)
+
+// LogLevel represents the severity of the log message.
+type LogLevel int
+
+const (
+    DEBUG LogLevel = iota
+    ERROR
+    INFO
+)
+
+// LoggerConfig holds the configuration for the logger.
+type LoggerConfig struct {
+    UseZap    bool
+    UseGCP    bool
+    ProjectID string
+    LogID     string
+}
+
+// Logger wraps GCP Stackdriver and optional zap logging.
+type Logger struct {
+    gcpLogger *logging.Logger
+    zapLogger *zap.Logger
+    config    LoggerConfig
+}
+
+// NewLogger initializes a new Logger instance.
+func NewLogger(config LoggerConfig) (*Logger, error) {
+    var gcpLogger *logging.Logger
+    var zapLogger *zap.Logger
+    var err error
+
+    // Initialize GCP Stackdriver client if required.
+    if config.UseGCP {
+        ctx := context.Background()
+        client, err := logging.NewClient(ctx, config.ProjectID)
+        if err != nil {
+            return nil, fmt.Errorf("failed to create GCP logging client: %v", err)
+        }
+        gcpLogger = client.Logger(config.LogID)
+    }
+
+    // Initialize zap logger if required.
+    if config.UseZap {
+        zapLogger, err = zap.NewProduction()
+        if err != nil {
+            return nil, fmt.Errorf("failed to create zap logger: %v", err)
+        }
+    }
+
+    return &Logger{
+        gcpLogger: gcpLogger,
+        zapLogger: zapLogger,
+        config:    config,
+    }, nil
+}
+
+// Log logs a message at the specified log level.
+func (l *Logger) Log(level LogLevel, msg interface{}) {
+    var severity logging.Severity
+
+    switch level {
+    case DEBUG:
+        severity = logging.Debug
+    case ERROR:
+        severity = logging.Error
+    case INFO:
+        severity = logging.Info
+    }
+
+    if l.config.UseGCP && l.gcpLogger != nil {
+        l.gcpLogger.Log(logging.Entry{
+            Severity: severity,
+            Payload:  msg,
+        })
+    }
+
+    if l.config.UseZap && l.zapLogger != nil {
+        switch level {
+        case DEBUG:
+            l.zapLogger.Debug(fmt.Sprintf("%v", msg))
+        case ERROR:
+            l.zapLogger.Error(fmt.Sprintf("%v", msg))
+        case INFO:
+            l.zapLogger.Info(fmt.Sprintf("%v", msg))
+        }
+    }
+}
+
+// Close closes the GCP Stackdriver logger.
+func (l *Logger) Close() error {
+    if l.config.UseGCP && l.gcpLogger != nil {
+        return l.gcpLogger.Flush()
+    }
+    return nil
+}
+
+func main() {
+    config := LoggerConfig{
+        UseZap:    true,
+        UseGCP:    true, // Set this to true if you want to log to GCP Stackdriver
+        ProjectID: "your-gcp-project-id",
+        LogID:     "your-log-id",
+    }
+
+    // Initialize the logger with the configuration
+    logger, err := NewLogger(config)
+    if err != nil {
+        log.Fatalf("Failed to initialize logger: %v", err)
+    }
+    defer logger.Close()
+
+    // Log messages of different types.
+    logger.Log(DEBUG, "This is a debug message")
+    logger.Log(INFO, map[string]interface{}{"key": "value", "number": 123})
+    logger.Log(ERROR, struct {
+        ID    int
+        Error string
+    }{ID: 42, Error: "Something went wrong"})
+
+    fmt.Println("Logs have been sent to the configured log destinations.")
 }
 ```

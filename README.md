@@ -156,6 +156,8 @@
 
 [GCP StackDriver Logger](#gcp-stackdriver-logger)
 
+[HTTP Request With Retry And Proxy And Timeout](#http-request-with-retry-and-proxy-and-timeout)
+
 <hr/>
 
 #### [Go Build For Linux x86-64](#go-build-for-linux-x86-64)
@@ -10827,5 +10829,156 @@ func DoOtherLogging() {
 	}
 
 	AppLogger.Log(entry3)
+}
+```
+
+#### [HTTP Request With Retry And Proxy And Timeout](#http-request-with-retry-and-proxy-and-timeout)
+
+```go
+package main
+
+import (
+	"bytes"
+	"context"
+	"crypto/tls"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"time"
+)
+
+// HTTPMethod defines the types of HTTP methods
+type HTTPMethod string
+
+const (
+	GET    HTTPMethod = "GET"
+	POST   HTTPMethod = "POST"
+	PUT    HTTPMethod = "PUT"
+	PATCH  HTTPMethod = "PATCH"
+	DELETE HTTPMethod = "DELETE"
+)
+
+// HTTPRequestFactory is the interface for making HTTP requests
+type HTTPRequestFactory interface {
+	MakeRequest(ctx context.Context, url string, payload []byte) (*http.Response, error)
+}
+
+// HTTPRequestFactoryImpl is the concrete implementation of the factory
+type HTTPRequestFactoryImpl struct {
+	method   HTTPMethod
+	proxyURL string // Optional proxy URL
+}
+
+// MakeRequest performs an HTTP request with optional payload, optional proxy, context timeout, and retry logic
+func (f *HTTPRequestFactoryImpl) MakeRequest(ctx context.Context, url string, payload []byte) (*http.Response, error) {
+	var req *http.Request
+	var err error
+	maxRetries := 3
+
+	// Retry logic: Attempt request up to maxRetries times
+	for i := 0; i < maxRetries; i++ {
+		// Create HTTP request with the provided payload or without it
+		if len(payload) > 0 {
+			req, err = http.NewRequestWithContext(ctx, string(f.method), url, bytes.NewBuffer(payload))
+		} else {
+			req, err = http.NewRequestWithContext(ctx, string(f.method), url, nil)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		// Set appropriate headers (example: JSON)
+		req.Header.Set("Content-Type", "application/json")
+
+		// Setup HTTP Transport with optional proxy and TLS configuration
+		transport := &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, // Skipping certificate verification
+			},
+		}
+
+		// If proxy is provided, configure the transport to use the proxy
+		if f.proxyURL != "" {
+			proxyURL, err := url.Parse(f.proxyURL)
+			if err != nil {
+				return nil, fmt.Errorf("invalid proxy URL: %v", err)
+			}
+			transport.Proxy = http.ProxyURL(proxyURL)
+		}
+
+		// Define an HTTP client with the transport
+		client := &http.Client{
+			Transport: transport,
+		}
+
+		// Send the request
+		resp, err := client.Do(req)
+
+		// Check if the request was successful or not
+		if err == nil && resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+			return resp, nil // Success, return the response
+		}
+
+		// If error or non-2xx status code, retry
+		if err != nil {
+			fmt.Printf("Attempt %d failed: %v\n", i+1, err)
+		} else {
+			fmt.Printf("Attempt %d failed: Received non-2xx status code %d\n", i+1, resp.StatusCode)
+		}
+
+		// If this was the last attempt, return the error
+		if i == maxRetries-1 {
+			return resp, fmt.Errorf("max retries exceeded: %v", err)
+		}
+
+		// Exponential backoff between retries (increase wait time)
+		time.Sleep(time.Duration(i+1) * time.Second)
+	}
+
+	return nil, fmt.Errorf("request failed after max retries")
+}
+
+// HTTPRequestFactoryCreator is the factory method to create HTTPRequestFactory instances
+func HTTPRequestFactoryCreator(method HTTPMethod, proxyURL string) HTTPRequestFactory {
+	return &HTTPRequestFactoryImpl{method: method, proxyURL: proxyURL}
+}
+
+func main() {
+	url := "https://jsonplaceholder.typicode.com/posts"
+
+	// Set a 5-second timeout context
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Example: POST request with payload, no proxy
+	postFactory := HTTPRequestFactoryCreator(POST, "")
+	postPayload := []byte(`{"title":"foo", "body":"bar", "userId":1}`)
+	resp, err := postFactory.MakeRequest(ctx, url, postPayload)
+	handleResponse(resp, err)
+
+	// Example: GET request without payload, with proxy
+	proxy := "http://myproxy.example.com:8080"
+	getFactory := HTTPRequestFactoryCreator(GET, proxy)
+	resp, err = getFactory.MakeRequest(ctx, url, nil)
+	handleResponse(resp, err)
+}
+
+// handleResponse handles the response from the server
+func handleResponse(resp *http.Response, err error) {
+	if err != nil {
+		fmt.Printf("Request failed: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Failed to read response body: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Status Code: %d\n", resp.StatusCode)
+	fmt.Printf("Response Body: %s\n", body)
 }
 ```

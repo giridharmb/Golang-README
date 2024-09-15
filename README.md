@@ -158,6 +158,8 @@
 
 [HTTP Request With Retry And Proxy And Timeout](#http-request-with-retry-and-proxy-and-timeout)
 
+[HTTP Connection Pooling](#http-connection-pooling)
+
 <hr/>
 
 #### [Go Build For Linux x86-64](#go-build-for-linux-x86-64)
@@ -10980,5 +10982,142 @@ func handleResponse(resp *http.Response, err error) {
 
 	fmt.Printf("Status Code: %d\n", resp.StatusCode)
 	fmt.Printf("Response Body: %s\n", body)
+}
+```
+#### [HTTP Connection Pooling](#http-connection-pooling)
+
+#### Benefits of Connection Pooling
+
+- Reduced Latency: By reusing existing connections, you reduce the overhead of establishing new TCP connections and TLS handshakes for each request.
+- Resource Efficiency: Pooling connections allows you to efficiently manage system resources like file descriptors and ports, preventing resource exhaustion.
+- Concurrency Control: The MaxConnsPerHost setting allows you to limit the number of concurrent connections to a single host, which can help prevent overwhelming the server or hitting rate limits.
+
+#### Important Considerations
+
+- Connection Timeouts: Ensure that the IdleConnTimeout is appropriate for your use case. Too short of a timeout might close connections too early, while too long might keep connections open unnecessarily.
+- TLS Configurations: If you are connecting to secure (HTTPS) endpoints, ensure that the TLS configuration (TLSClientConfig) is secure. In production, you should avoid InsecureSkipVerify: true unless you have specific needs.
+
+#### Summary
+
+- Create a custom http.Transport for fine-tuning connection pooling options.
+- Set limits on idle connections, maximum connections per host, and connection timeouts to optimize connection reuse.
+- Use the custom transport in your http.Client to automatically pool and reuse HTTP connections across multiple requests.
+
+By using connection pooling, you can significantly improve the performance and efficiency of HTTP requests in your Go applications, especially when making multiple requests to the same host.
+
+Explanation of Key Parameters:
+
+- `MaxIdleConns`: The maximum number of idle (keep-alive) connections across all hosts. This allows the client to reuse connections rather than creating a new one for each request, improving performance.
+- `MaxIdleConnsPerHost`: The maximum number of idle connections to keep for each host. Setting this ensures that there is a reasonable limit on the number of open connections to a single host.
+- `MaxConnsPerHost`: The maximum number of total connections to a single host. This controls how many active connections can be open simultaneously to the same host, providing throttling of concurrent connections.
+ - `IdleConnTimeout`: The maximum amount of time that an idle connection can remain open before being closed. If no new requests are made on an idle connection within this time, it will be closed.
+- `TLSClientConfig`: Used to configure the TLS settings. For example, setting InsecureSkipVerify: true disables TLS certificate verification (use with caution in production).
+
+
+> Just In Case
+
+```bash
+ulimit -n 65536
+sysctl -w net.ipv4.ip_local_port_range="1024 65535"
+```
+
+```go
+package main
+
+import (
+    "crypto/tls"
+    "fmt"
+    "io/ioutil"
+    "log"
+    "net/http"
+    "time"
+)
+
+func main() {
+    // Create a custom transport with connection pooling options
+    customTransport := &http.Transport{
+        // MaxIdleConns: The maximum number of idle (keep-alive) connections across all hosts
+        MaxIdleConns: 100,
+        // MaxIdleConnsPerHost: The maximum number of idle connections to keep per host
+        MaxIdleConnsPerHost: 10,
+        // MaxConnsPerHost: The maximum number of connections to a single host
+        MaxConnsPerHost: 50,
+        // IdleConnTimeout: How long to keep idle connections alive
+        IdleConnTimeout: 90 * time.Second,
+
+        // Optional: Skip TLS verification (only use in development or when necessary)
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+    }
+
+    // Create a custom HTTP client using the custom transport
+    client := &http.Client{
+        Transport: customTransport,
+        Timeout:   10 * time.Second, // Set a timeout for the request
+    }
+
+    // Perform a GET request (reusing connections with connection pooling)
+    resp, err := client.Get("https://www.example.com")
+    if err != nil {
+        log.Fatalf("Error making request: %v", err)
+    }
+    defer resp.Body.Close()
+
+    // Read and print the response body
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        log.Fatalf("Error reading response body: %v", err)
+    }
+    fmt.Println("Response:", string(body))
+}
+```
+
+```go
+package main
+
+import (
+    "crypto/tls"
+    "fmt"
+    "io/ioutil"
+    "log"
+    "net/http"
+    "time"
+)
+
+func main() {
+    // Custom transport with connection pooling
+    customTransport := &http.Transport{
+        MaxIdleConns:        100,
+        MaxIdleConnsPerHost: 10,
+        MaxConnsPerHost:     50,
+        IdleConnTimeout:     90 * time.Second,
+        TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+    }
+
+    // Create the HTTP client
+    client := &http.Client{
+        Transport: customTransport,
+        Timeout:   10 * time.Second,
+    }
+
+    // Make multiple requests to the same host
+    urls := []string{
+        "https://www.example.com",
+        "https://www.example.com/path1",
+        "https://www.example.com/path2",
+    }
+
+    for _, url := range urls {
+        resp, err := client.Get(url)
+        if err != nil {
+            log.Printf("Error making request to %s: %v", url, err)
+            continue
+        }
+        body, err := ioutil.ReadAll(resp.Body)
+        if err != nil {
+            log.Printf("Error reading response from %s: %v", url, err)
+        }
+        fmt.Printf("Response from %s: %s\n", url, string(body))
+        resp.Body.Close()
+    }
 }
 ```

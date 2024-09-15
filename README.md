@@ -10871,7 +10871,7 @@ type HTTPRequestFactoryImpl struct {
 }
 
 // MakeRequest performs an HTTP request with optional payload, optional proxy, context timeout, and retry logic
-func (f *HTTPRequestFactoryImpl) MakeRequest(ctx context.Context, url string, payload []byte) (*http.Response, error) {
+func (f *HTTPRequestFactoryImpl) MakeRequest(ctx context.Context, httpUrl string, payload []byte) (*http.Response, error) {
 	var req *http.Request
 	var err error
 	maxRetries := 3
@@ -10880,9 +10880,9 @@ func (f *HTTPRequestFactoryImpl) MakeRequest(ctx context.Context, url string, pa
 	for i := 0; i < maxRetries; i++ {
 		// Create HTTP request with the provided payload or without it
 		if len(payload) > 0 {
-			req, err = http.NewRequestWithContext(ctx, string(f.method), url, bytes.NewBuffer(payload))
+			req, err = http.NewRequestWithContext(ctx, string(f.method), httpUrl, bytes.NewBuffer(payload))
 		} else {
-			req, err = http.NewRequestWithContext(ctx, string(f.method), url, nil)
+			req, err = http.NewRequestWithContext(ctx, string(f.method), httpUrl, nil)
 		}
 		if err != nil {
 			return nil, err

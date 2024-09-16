@@ -1,5 +1,7 @@
 ### Golang Snippets
 
+[Setup Golang](#setup-golang)
+
 [Go Build For Linux x86-64](#go-build-for-linux-x86-64)
 
 [Server Sent Events](#server-sent-events)
@@ -161,6 +163,80 @@
 [HTTP Connection Pooling](#http-connection-pooling)
 
 <hr/>
+
+#### [Setup Golang](#setup-golang)
+
+### Setup Golang
+
+> Assumptions
+ - You Are Setting Up Golang On Linux VM (amd64 Architecture)
+ - Installing Go Version `1.22.5`
+ - Using BASH Shell (Which Means You Are Exporting Variables In `~/.bashrc`)
+
+> If Required, Set HTTP Proxy (`Optional`)
+
+```bash
+export http_proxy=http://my-proxy.company.com:5050;export https_proxy=http://my-proxy.company.com:5050;
+```
+
+> Download Go For Linux/amd64 Architecture
+
+```bash
+cd ~ && wget https://go.dev/dl/go1.22.5.linux-amd64.tar.gz
+```
+
+> Create Go Directory & Extract Go
+
+> This Is `GOPATH`
+
+```bash
+mkdir -p ~/git/goworkspace/src
+```
+
+> This Is `GOROOT`
+
+```bash
+mkdir -p ~/go/go1.22.5/
+```
+
+```bash
+cd ~ && mv -v go1.22.5.linux-amd64.tar.gz ~/go/go1.22.5/ && cd ~/go/go1.22.5 
+```
+
+> Extract Tarball
+
+```bash
+tar -zxvf go1.22.5.linux-amd64.tar.gz
+```
+
+> Export Variables & Add Them To `~/.bashrc`
+
+> Make Sure >
+ - These Variables Are (NOT) Exported Already 
+ - Assuming You Are Setting Up Go For The First Time
+
+```bash
+cat <<EOL >> ~/.bashrc
+export GOROOT="$HOME/go/go1.22.5/go"
+export GOPATH=$HOME/git/goworkspace
+export GOBIN=$GOPATH/bin
+export GO111MODULE="auto"
+export PATH=$PATH:$GOPATH/bin
+export PATH=$PATH:$GOROOT/bin
+EOL
+```
+
+> Exit Terminal & SSH Back To The VM & Verify Go Version
+
+```bash
+go version
+```
+
+> Expected Output For Running `go version`
+
+```bash
+go version go1.22.5 linux/amd64
+```
 
 #### [Go Build For Linux x86-64](#go-build-for-linux-x86-64)
 

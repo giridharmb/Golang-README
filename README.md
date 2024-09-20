@@ -162,6 +162,8 @@
 
 [HTTP Connection Pooling](#http-connection-pooling)
 
+[Custom GCP StackDriver And Uber Zap Logging](#custom-gcp-stackdriver-and-uber-zap-logging)
+
 <hr/>
 
 #### [Setup Golang](#setup-golang)
@@ -11197,3 +11199,255 @@ func main() {
     }
 }
 ```
+
+#### [Custom GCP StackDriver And Uber Zap Logging](#custom-gcp-stackdriver-and-uber-zap-logging)
+
+> Make Sure You Export The Required Environment Variable
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="/etc/my-gcp-project.json"
+```
+
+> Uber Zap & GCP StackDriver Logging
+
+```go
+package main
+
+import (
+	"cloud.google.com/go/logging"
+	"context"
+	"fmt"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"log"
+	"runtime/debug"
+	"strings"
+)
+
+var ULogConfigLogSysAndGCP LoggerConfig
+var ULogConfigLogSys LoggerConfig
+var ULogConfigLogGCP LoggerConfig
+
+var LogSys *Logger
+var LogGCP *Logger
+var LogSysGCP *Logger
+
+// LogLevel represents the severity of the log message.
+type LogLevel int
+
+var StackDriverLoggerName = "my-logs"
+var GCPProjectName = "my-gcp-project"
+
+const (
+	DEBUG LogLevel = iota
+	ERROR
+	INFO
+	WARNING
+	CRITICAL
+)
+
+// LoggerConfig holds the configuration for the logger.
+type LoggerConfig struct {
+	UseZap    bool
+	UseGCP    bool
+	ProjectID string
+	LogID     string
+}
+
+// Logger wraps GCP Stackdriver and optional zap logging.
+type Logger struct {
+	gcpLogger *logging.Logger
+	zapLogger *zap.Logger
+	config    LoggerConfig
+}
+
+// NewLogger initializes a new Logger instance.
+func NewLogger(config LoggerConfig) (*Logger, error) {
+	var gcpLogger *logging.Logger
+	var zapLogger *zap.Logger
+	//var err error
+
+	// Initialize GCP Stackdriver client if required.
+	if config.UseGCP {
+		ctx := context.Background()
+		client, err := logging.NewClient(ctx, config.ProjectID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create GCP logging client: %v", err)
+		}
+		gcpLogger = client.Logger(config.LogID)
+	}
+
+	// Custom Zap encoder for console output with better formatting
+	if config.UseZap {
+		encoderConfig := zapcore.EncoderConfig{
+			MessageKey:    "msg",
+			LevelKey:      "level",
+			TimeKey:       "ts",
+			CallerKey:     "caller",
+			StacktraceKey: "stacktrace",
+			EncodeLevel:   zapcore.CapitalLevelEncoder,
+			EncodeTime:    zapcore.ISO8601TimeEncoder,
+			EncodeCaller:  zapcore.ShortCallerEncoder,
+		}
+
+		// Create zap core with the custom encoder.
+		zapCore := zapcore.NewCore(
+			zapcore.NewConsoleEncoder(encoderConfig),
+			zapcore.AddSync(log.Writer()),
+			zap.DebugLevel, // Set log level to debug
+		)
+
+		// Remove automatic stack traces added by Zap, handle manually
+		zapLogger = zap.New(zapCore, zap.AddCaller()) // No zap.AddStacktrace()
+	}
+
+	return &Logger{
+		gcpLogger: gcpLogger,
+		zapLogger: zapLogger,
+		config:    config,
+	}, nil
+}
+
+// Log logs a message at the specified log level.
+func (l *Logger) Log(level LogLevel, msg interface{}) {
+	var severity logging.Severity
+
+	// Map log levels to GCP Stackdriver severity.
+	switch level {
+	case DEBUG:
+		severity = logging.Debug
+	case ERROR:
+		severity = logging.Error
+	case INFO:
+		severity = logging.Info
+	case WARNING:
+		severity = logging.Warning
+	case CRITICAL:
+		severity = logging.Critical
+	}
+
+	// Log to GCP Stackdriver if enabled.
+	if l.config.UseGCP && l.gcpLogger != nil {
+		l.gcpLogger.Log(logging.Entry{
+			Severity: severity,
+			Payload:  msg,
+		})
+	}
+
+	// Log to Zap if enabled.
+	if l.config.UseZap && l.zapLogger != nil {
+		switch level {
+		case DEBUG:
+			l.zapLogger.Debug(fmt.Sprintf("%v", msg))
+		case ERROR:
+			// Capture the stacktrace and format it before logging as a single line
+			stacktrace := flattenStackTrace(string(debug.Stack()))
+			l.zapLogger.Error(fmt.Sprintf("%v | Stacktrace: %s", msg, stacktrace))
+		case INFO:
+			l.zapLogger.Info(fmt.Sprintf("%v", msg))
+		case WARNING:
+			l.zapLogger.Warn(fmt.Sprintf("%v", msg))
+		case CRITICAL:
+			// Capture the stacktrace and format it before logging as a single line
+			stacktrace := flattenStackTrace(string(debug.Stack()))
+			l.zapLogger.DPanic(fmt.Sprintf("%v | Stacktrace: %s", msg, stacktrace))
+		}
+	}
+}
+
+// flattenStackTrace is a helper function to remove line breaks and replace them with space characters
+func flattenStackTrace(stack string) string {
+	// Replace newlines and tabs with a space to make it a single line
+	stack = strings.ReplaceAll(stack, "\n", " ")
+	stack = strings.ReplaceAll(stack, "\t", " ")
+	return stack
+}
+
+// Close closes the GCP Stackdriver logger.
+func (l *Logger) Close() error {
+	if l.config.UseGCP && l.gcpLogger != nil {
+		return l.gcpLogger.Flush()
+	}
+	return nil
+}
+
+func InitializeUniversalLogging() {
+	var err error
+
+	ULogConfigLogSys = LoggerConfig{
+		UseZap:    true,
+		UseGCP:    false,
+		ProjectID: GCPProjectName,
+		LogID:     StackDriverLoggerName,
+	}
+
+	ULogConfigLogGCP = LoggerConfig{
+		UseZap:    false,
+		UseGCP:    true,
+		ProjectID: GCPProjectName,
+		LogID:     StackDriverLoggerName,
+	}
+
+	ULogConfigLogSysAndGCP = LoggerConfig{
+		UseZap:    true,
+		UseGCP:    true,
+		ProjectID: GCPProjectName,
+		LogID:     StackDriverLoggerName,
+	}
+
+	LogSys, err = NewLogger(ULogConfigLogSys)
+	if err != nil {
+		log.Fatalf("__fatal__ : failed to initialize logger : NewLogger(appdata.ULogConfigLogSys) : %v", err)
+	}
+
+	LogGCP, err = NewLogger(ULogConfigLogGCP)
+	if err != nil {
+		log.Fatalf("__fatal__ : failed to initialize logger : NewLogger(appdata.ULogConfigLogGCP) : %v", err)
+	}
+
+	LogSysGCP, err = NewLogger(ULogConfigLogSysAndGCP)
+	if err != nil {
+		log.Fatalf("__fatal__ : failed to initialize logger : NewLogger(appdata.ULogConfigLogSysAndGCP) : %v", err)
+	}
+
+	LogSysGCP.Log(INFO, "__initialize__ : Initialized Universal Logger with GCP/UberZap Logger")
+}
+
+func main() {
+	config := LoggerConfig{
+		UseZap:    true,
+		UseGCP:    true,
+		ProjectID: GCPProjectName,
+		LogID:     StackDriverLoggerName,
+	}
+
+	// Initialize the logger with the configuration
+	logger, err := NewLogger(config)
+	if err != nil {
+		log.Fatalf("__fatal__ : failed to initialize logger: %v", err)
+	}
+	defer logger.Close()
+
+	// Log messages of different levels
+	logger.Log(DEBUG, "This is a debug message")
+	logger.Log(INFO, "This is an info message")
+	logger.Log(WARNING, "This is a warning message")
+	logger.Log(ERROR, "This is an error message")
+	logger.Log(CRITICAL, "This is a critical message")
+
+	fmt.Println("Logs have been sent to the configured log destinations.")
+}
+```
+
+> Output on Console
+
+```bash
+2024-09-20T08:42:16.461-0700    DEBUG   eventgen/custom_logging.go:128  This is a debug message
+2024-09-20T08:42:16.462-0700    INFO    eventgen/custom_logging.go:134  This is an info message
+2024-09-20T08:42:16.462-0700    WARN    eventgen/custom_logging.go:136  This is a warning message
+2024-09-20T08:42:16.462-0700    ERROR   eventgen/custom_logging.go:132  This is an error message | Stacktrace: goroutine 1 [running]: runtime/debug.Stack()  /root/go/go1.22.5/go/src/runtime/debug/stack.go:24 +0x64 main.(*Logger).Log(0x140001141c0, 0x1?, {0x100adeb00, 0x100cbbdd0})  /root/git/goworkspace/src/myplayground/eventgen/custom_logging.go:131 +0x114 main.SampleLogging()  /root/git/goworkspace/src/myplayground/eventgen/custom_logging.go:222 +0x154 main.main()  /root/git/goworkspace/src/myplayground/eventgen/main.go:18 +0x24
+2024-09-20T08:42:16.462-0700    DPANIC  eventgen/custom_logging.go:140  This is a critical message | Stacktrace: goroutine 1 [running]: runtime/debug.Stack()  /root/go/go1.22.5/go/src/runtime/debug/stack.go:24 +0x64 main.(*Logger).Log(0x140001141c0, 0x4?, {0x100adeb00, 0x100cbbde0})  /root/git/goworkspace/src/myplayground/eventgen/custom_logging.go:139 +0x20c main.SampleLogging()  /root/git/goworkspace/src/myplayground/eventgen/custom_logging.go:223 +0x170 main.main()  /root/git/goworkspace/src/myplayground/eventgen/main.go:18 +0x24
+Logs have been sent to the configured log destinations.
+```
+
+> You Can Also Verify Logs In Your GCP Project Under `my-logs`

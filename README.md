@@ -11655,16 +11655,16 @@ import (
 /*
 Summary of What Each Test Does:
 
-	1.	TestJobConcurrency: Simulates multiple instances running concurrently and ensures that only one instance can run the job by using advisory locks.
-	2.	TestJobCompletion: Tests sequential job execution, ensuring that the lock is released after the job completes, and a new job can start.
-	3.	TestJobFailureRecovery: Simulates a job failure where the lock is not explicitly released and ensures that the lock is released automatically when the session is terminated.
-	4.	TestJobCleanup: Tests automatic cleanup of advisory locks by simulating an abnormal termination (disconnect) and ensures that a new job can acquire the lock after the session ends.
+ - TestJobConcurrency: Simulates multiple instances running concurrently and ensures that only one instance can run the job by using advisory locks.
+ - TestJobCompletion: Tests sequential job execution, ensuring that the lock is released after the job completes, and a new job can start.
+ - TestJobFailureRecovery: Simulates a job failure where the lock is not explicitly released and ensures that the lock is released automatically when the session is terminated.
+ - TestJobCleanup: Tests automatic cleanup of advisory locks by simulating an abnormal termination (disconnect) and ensures that a new job can acquire the lock after the session ends.
 
 Why These Tests Matter:
 
-	•	Concurrency Control: In a distributed environment where multiple instances of the same service may try to run the same job, these tests ensure that race conditions are avoided and only one job instance runs at a time.
-	•	Robustness: By simulating job failures and abnormal terminations, we ensure that PostgreSQL advisory locks work as expected, recovering gracefully and allowing jobs to continue running after failures.
-	•	Cleanup and Recovery: The tests validate that locks are properly cleaned up when jobs fail or connections are lost, ensuring that the system can recover and continue processing jobs without getting stuck.
+ - Concurrency Control: In a distributed environment where multiple instances of the same service may try to run the same job, these tests ensure that race conditions are avoided and only one job instance runs at a time.
+ - Robustness: By simulating job failures and abnormal terminations, we ensure that PostgreSQL advisory locks work as expected, recovering gracefully and allowing jobs to continue running after failures.
+ - Cleanup and Recovery: The tests validate that locks are properly cleaned up when jobs fail or connections are lost, ensuring that the system can recover and continue processing jobs without getting stuck.
 
 */
 
@@ -11676,19 +11676,19 @@ Purpose: This test simulates multiple instances trying to run the same job concu
 
 Steps:
 
-	1.	We start by connecting to the PostgreSQL database.
-	2.	A shared counter (jobRunCount) is initialized to track how many times the job is actually run.
-	3.	We create 10 concurrent goroutines (numInstances = 10), simulating 10 different virtual machines (or application instances), each trying to run the job.
-	4.	Each goroutine:
-	    •	Attempts to acquire the advisory lock.
-	    •	If the lock is acquired, it simulates running the job for 1 second and increments the shared jobRunCount counter.
-	    •	If it cannot acquire the lock, it skips the job.
-	5.	After all goroutines complete, the test checks whether only one instance ran the job (jobRunCount == 1).
+ - We start by connecting to the PostgreSQL database.
+ - A shared counter (jobRunCount) is initialized to track how many times the job is actually run.
+ - We create 10 concurrent goroutines (numInstances = 10), simulating 10 different virtual machines (or application instances), each trying to run the job.
+ - Each goroutine:
+    - Attempts to acquire the advisory lock.
+    - If the lock is acquired, it simulates running the job for 1 second and increments the shared jobRunCount counter.
+    - If it cannot acquire the lock, it skips the job.
+ - After all goroutines complete, the test checks whether only one instance ran the job (jobRunCount == 1).
 
 What It Validates:
 
-	•	Concurrency Safety: It ensures that only one instance can acquire the advisory lock and run the job, even when multiple instances are attempting to run it concurrently.
-	•	Locking Mechanism: It validates that PostgreSQL advisory locks are working correctly in a concurrent environment, preventing multiple instances from running the job at the same time.
+ - Concurrency Safety: It ensures that only one instance can acquire the advisory lock and run the job, even when multiple instances are attempting to run it concurrently.
+ - Locking Mechanism: It validates that PostgreSQL advisory locks are working correctly in a concurrent environment, preventing multiple instances from running the job at the same time.
 */
 func TestJobConcurrency(t *testing.T) {
 	// Connect to the same PostgreSQL instance
@@ -11755,20 +11755,20 @@ Purpose: This test ensures that once a job finishes, the lock is properly releas
 
 Steps:
 
-	1.	Connect to the PostgreSQL database.
-	2.	Start and run the first job:
-	    •	The first job acquires the advisory lock.
-	    •	The job runs for 1 second.
-	    •	The lock is released after the job completes.
-	3.	After the first job completes, we immediately try to start a second job:
-	    •	The second job tries to acquire the lock.
-	    •	Since the first job released the lock, the second job should be able to acquire it and run.
-	4.	The lock is released after the second job completes.
+ - Connect to the PostgreSQL database.
+ - Start and run the first job:
+    - The first job acquires the advisory lock.
+    - The job runs for 1 second.
+    - The lock is released after the job completes.
+ - After the first job completes, we immediately try to start a second job:
+    - The second job tries to acquire the lock.
+    - Since the first job released the lock, the second job should be able to acquire it and run.
+ - The lock is released after the second job completes.
 
 What It Validates:
 
-	•	Lock Release: It checks that the lock is properly released after the job completes.
-	•	Sequential Job Execution: It validates that a new job can start and acquire the lock once the previous job has finished, ensuring that jobs can run sequentially without issues.
+ - Lock Release: It checks that the lock is properly released after the job completes.
+ - Sequential Job Execution: It validates that a new job can start and acquire the lock once the previous job has finished, ensuring that jobs can run sequentially without issues.
 */
 func TestJobCompletion(t *testing.T) {
 	db := pg.Connect(&PGOptions)
@@ -11800,27 +11800,25 @@ func TestJobCompletion(t *testing.T) {
 /*
 Test 3: TestJobFailureRecovery
 
-
 Purpose: This test simulates a job failure scenario where the job doesn’t release the lock, and it ensures that the lock is released when the database connection is closed, allowing a new job to start after recovery.
 
 Steps:
 
-	1.	Connect to the PostgreSQL database.
-	2.	Start the first job:
-	    •	The job acquires the advisory lock, but it does not release the lock, simulating a job failure (i.e., the job crashes or terminates unexpectedly).
-	3.	The database connection is closed, simulating a session termination.
-	    •	When a session is terminated, PostgreSQL automatically releases any advisory locks held by that session.
-	4.	After a short delay (500ms), we reconnect to the database.
-	5.	We attempt to acquire the lock again:
-	    •	Since the previous session has been terminated, the lock should now be available.
-	6.	The test checks if the new job can acquire the lock and then releases it.
+ - Connect to the PostgreSQL database.
+ - Start the first job:
+    - The job acquires the advisory lock, but it does not release the lock, simulating a job failure (i.e., the job crashes or terminates unexpectedly).
+ - The database connection is closed, simulating a session termination.
+    - When a session is terminated, PostgreSQL automatically releases any advisory locks held by that session.
+ - After a short delay (500ms), we reconnect to the database.
+ - We attempt to acquire the lock again:
+    - Since the previous session has been terminated, the lock should now be available.
+ - The test checks if the new job can acquire the lock and then releases it.
 
 What It Validates:
 
-	•	Failure Recovery: It ensures that when a job crashes or the session is terminated, PostgreSQL correctly releases the advisory lock.
-	•	Session-Based Locking: It validates that PostgreSQL advisory locks are session-based and are automatically released when the session ends.
-	•	Post-Recovery Job Execution: It checks that a new job can run and acquire the lock after the failed job’s session is terminated.
-
+ - Failure Recovery: It ensures that when a job crashes or the session is terminated, PostgreSQL correctly releases the advisory lock.
+ - Session-Based Locking: It validates that PostgreSQL advisory locks are session-based and are automatically released when the session ends.
+ - Post-Recovery Job Execution: It checks that a new job can run and acquire the lock after the failed job’s session is terminated.
 */
 func TestJobFailureRecovery(t *testing.T) {
 	db := pg.Connect(&PGOptions)
@@ -11865,16 +11863,16 @@ Purpose: This test ensures that if a job terminates abnormally (e.g., the connec
 
 Steps:
 
- 1. Connect to the PostgreSQL database.
- 2. Start a job:
-    •	The job acquires the advisory lock and runs.
- 3. Simulate an abnormal termination:
-    •	The database connection is closed, simulating an abnormal job termination.
-    •	Since PostgreSQL releases advisory locks when the connection is closed, the lock should be released.
- 4. Reconnect to the database to simulate a new session.
- 5. Attempt to acquire the lock again:
-    •	Since the previous session has ended, the advisory lock should now be available.
- 6. The lock is acquired and then released after the job completes.
+ - Connect to the PostgreSQL database.
+ - Start a job:
+    - The job acquires the advisory lock and runs.
+ - Simulate an abnormal termination:
+    - The database connection is closed, simulating an abnormal job termination.
+    - Since PostgreSQL releases advisory locks when the connection is closed, the lock should be released.
+ - Reconnect to the database to simulate a new session.
+ - Attempt to acquire the lock again:
+    - Since the previous session has ended, the advisory lock should now be available.
+ - The lock is acquired and then released after the job completes.
 
 What It Validates:
 

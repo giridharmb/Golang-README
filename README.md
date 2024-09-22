@@ -164,6 +164,8 @@
 
 [Custom GCP StackDriver And Uber Zap Logging](#custom-gcp-stackdriver-and-uber-zap-logging)
 
+[PostgreSQL Locks To Ensure Single Instance Runs Even Thought It Is Deployed On Multiple Instances](#postgresql-locks-to-ensure-single-instance-runs-even-thought-it-is-deployed-on-multiple-instances)
+
 <hr/>
 
 #### [Setup Golang](#setup-golang)
@@ -11451,3 +11453,392 @@ Logs have been sent to the configured log destinations.
 ```
 
 > You Can Also Verify Logs In Your GCP Project Under `my-logs`
+
+#### [PostgreSQL Locks To Ensure Single Instance Runs Even Thought It Is Deployed On Multiple Instances](#postgresql-locks-to-ensure-single-instance-runs-even-thought-it-is-deployed-on-multiple-instances)
+
+Main Program `main.go`
+
+```go
+package main
+
+import (
+	"github.com/go-pg/pg/v10"
+	"log"
+	"time"
+)
+
+var PGOptions = pg.Options{
+	Addr:     "IP_ADDRESS:5432",
+	User:     "<REDACTED>",
+	Password: "<REDACTED>",
+	Database: "<SOME_THHING>",
+}
+
+var LockID = int64(1)
+
+// RunCoreJob simulates a job that only one instance should run at a time.
+func RunCoreJob(db *pg.DB) {
+	// Try to acquire the advisory lock (with a unique identifier for the job).
+	// PostgreSQL advisory locks use a unique 64-bit integer for locking.
+	// You can derive this from your job ID or any unique identifier.
+	//lockID := LockID // Use a unique number to identify the lock.
+
+	// Try to acquire the advisory lock
+	locked, err := acquireAdvisoryLock(db, LockID)
+	if err != nil {
+		log.Fatalf("Failed to acquire advisory lock: %v", err)
+	}
+
+	if !locked {
+		log.Println("Job is already running in another instance. Skipping this run.")
+		return
+	}
+	defer releaseAdvisoryLock(db, LockID)
+
+	// If we reach this point, it means the lock was acquired, and this instance will run the job
+	log.Println("Job started, acquired the lock...")
+
+	// Simulate a long-running job
+	for i := 0; i < 10; i++ {
+		log.Printf("Job is running... (%d/10)", i+1)
+		time.Sleep(1 * time.Second)
+	}
+
+	// Job completed
+	log.Println("Job completed. Releasing the lock.")
+}
+
+// acquireAdvisoryLock attempts to acquire a PostgreSQL advisory lock.
+func acquireAdvisoryLock(db *pg.DB, lockID int64) (bool, error) {
+	var locked bool
+	_, err := db.QueryOne(pg.Scan(&locked), "SELECT pg_try_advisory_lock(?)", lockID)
+	if err != nil {
+		return false, err
+	}
+	return locked, nil
+}
+
+// releaseAdvisoryLock releases the PostgreSQL advisory lock.
+func releaseAdvisoryLock(db *pg.DB, lockID int64) error {
+	_, err := db.Exec("SELECT pg_advisory_unlock(?)", lockID)
+	return err
+}
+
+// StartCleanupThread periodically cleans up stale job entries.
+func StartCleanupThread(db *pg.DB) {
+	ticker := time.NewTicker(5 * time.Minute) // Run cleanup every 30 minutes
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			log.Println("Running periodic cleanup of stale jobs...")
+			// pglock automatically handles lock expiration based on the TTL,
+			// so we don't need to manually clean up stale locks.
+		}
+	}
+}
+
+func main() {
+
+	// Connect to PostgreSQL
+	db := pg.Connect(&PGOptions)
+	defer db.Close()
+
+	// Start the cleanup thread in the background
+	go StartCleanupThread(db)
+
+	// Create a ticker that triggers every 15 minutes to run the job
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	// Run the job for the first time on startup
+	go RunCoreJob(db)
+
+	// Periodically run the job every 15 minutes
+	for {
+		select {
+		case <-ticker.C:
+			go RunCoreJob(db)
+		}
+	}
+}
+```
+
+Unit Test : `main_test.go`
+
+```go
+package main
+
+import (
+	"log"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/go-pg/pg/v10"
+)
+
+/*
+Summary of What Each Test Does:
+
+	1.	TestJobConcurrency: Simulates multiple instances running concurrently and ensures that only one instance can run the job by using advisory locks.
+	2.	TestJobCompletion: Tests sequential job execution, ensuring that the lock is released after the job completes, and a new job can start.
+	3.	TestJobFailureRecovery: Simulates a job failure where the lock is not explicitly released and ensures that the lock is released automatically when the session is terminated.
+	4.	TestJobCleanup: Tests automatic cleanup of advisory locks by simulating an abnormal termination (disconnect) and ensures that a new job can acquire the lock after the session ends.
+
+Why These Tests Matter:
+
+	•	Concurrency Control: In a distributed environment where multiple instances of the same service may try to run the same job, these tests ensure that race conditions are avoided and only one job instance runs at a time.
+	•	Robustness: By simulating job failures and abnormal terminations, we ensure that PostgreSQL advisory locks work as expected, recovering gracefully and allowing jobs to continue running after failures.
+	•	Cleanup and Recovery: The tests validate that locks are properly cleaned up when jobs fail or connections are lost, ensuring that the system can recover and continue processing jobs without getting stuck.
+
+*/
+
+// TestJobConcurrency
+/*
+Test 1: TestJobConcurrency
+
+Purpose: This test simulates multiple instances trying to run the same job concurrently and ensures that only one instance is able to acquire the lock and run the job at a time.
+
+Steps:
+
+	1.	We start by connecting to the PostgreSQL database.
+	2.	A shared counter (jobRunCount) is initialized to track how many times the job is actually run.
+	3.	We create 10 concurrent goroutines (numInstances = 10), simulating 10 different virtual machines (or application instances), each trying to run the job.
+	4.	Each goroutine:
+	•	Attempts to acquire the advisory lock.
+	•	If the lock is acquired, it simulates running the job for 1 second and increments the shared jobRunCount counter.
+	•	If it cannot acquire the lock, it skips the job.
+	5.	After all goroutines complete, the test checks whether only one instance ran the job (jobRunCount == 1).
+
+What It Validates:
+
+	•	Concurrency Safety: It ensures that only one instance can acquire the advisory lock and run the job, even when multiple instances are attempting to run it concurrently.
+	•	Locking Mechanism: It validates that PostgreSQL advisory locks are working correctly in a concurrent environment, preventing multiple instances from running the job at the same time.
+*/
+func TestJobConcurrency(t *testing.T) {
+	// Connect to the same PostgreSQL instance
+	db := pg.Connect(&PGOptions)
+	defer db.Close()
+
+	// Shared counter to track how many times the job was actually run.
+	var jobRunCount int
+	var mu sync.Mutex
+
+	// Number of simulated instances (simulating multiple virtual machines).
+	numInstances := 10
+	var wg sync.WaitGroup
+
+	// Simulate multiple instances running concurrently.
+	for i := 0; i < numInstances; i++ {
+		wg.Add(1)
+		go func(instanceID int) {
+			defer wg.Done()
+
+			// Simulate the job trying to run.
+			log.Printf("Instance %d attempting to run the job...", instanceID)
+			if canRun, err := acquireAdvisoryLock(db, LockID); err != nil {
+				log.Printf("Instance %d failed to start the job: %v", instanceID, err)
+			} else if canRun {
+				// Only one instance should be able to enter this block.
+				mu.Lock()
+				jobRunCount++
+				mu.Unlock()
+
+				log.Printf("Instance %d is running the job.", instanceID)
+
+				// Simulate job processing
+				time.Sleep(1 * time.Second)
+
+				// Mark job as completed.
+				if err := releaseAdvisoryLock(db, LockID); err != nil {
+					log.Printf("Instance %d failed to release the lock: %v", instanceID, err)
+				} else {
+					log.Printf("Instance %d successfully completed the job.", instanceID)
+				}
+			} else {
+				log.Printf("Instance %d could not run the job because another instance is already running.", instanceID)
+			}
+		}(i)
+	}
+
+	// Wait for all goroutines to finish.
+	wg.Wait()
+
+	// Validate that only one instance actually ran the job.
+	if jobRunCount != 1 {
+		t.Fatalf("Expected only 1 instance to run the job, but %d instances ran it.", jobRunCount)
+	} else {
+		log.Println("Test passed: Only one instance ran the job.")
+	}
+}
+
+// TestJobCompletion
+/*
+Test 2: TestJobCompletion
+
+Purpose: This test ensures that once a job finishes, the lock is properly released, and another job can start successfully.
+
+Steps:
+
+	1.	Connect to the PostgreSQL database.
+	2.	Start and run the first job:
+	•	The first job acquires the advisory lock.
+	•	The job runs for 1 second.
+	•	The lock is released after the job completes.
+	3.	After the first job completes, we immediately try to start a second job:
+	•	The second job tries to acquire the lock.
+	•	Since the first job released the lock, the second job should be able to acquire it and run.
+	4.	The lock is released after the second job completes.
+
+What It Validates:
+
+	•	Lock Release: It checks that the lock is properly released after the job completes.
+	•	Sequential Job Execution: It validates that a new job can start and acquire the lock once the previous job has finished, ensuring that jobs can run sequentially without issues.
+*/
+func TestJobCompletion(t *testing.T) {
+	db := pg.Connect(&PGOptions)
+	defer db.Close()
+
+	// Start and complete the first job.
+	log.Println("Starting the first job...")
+	if canRun, err := acquireAdvisoryLock(db, LockID); err != nil || !canRun {
+		t.Fatalf("Failed to start the first job: %v", err)
+	}
+	time.Sleep(1 * time.Second)
+	if err := releaseAdvisoryLock(db, LockID); err != nil {
+		t.Fatalf("Failed to release the first job lock: %v", err)
+	}
+	log.Println("First job completed.")
+
+	// Ensure that another job can start after the first one completes.
+	log.Println("Starting the second job...")
+	if canRun, err := acquireAdvisoryLock(db, LockID); err != nil || !canRun {
+		t.Fatalf("Failed to start the second job after the first one completed: %v", err)
+	}
+	if err := releaseAdvisoryLock(db, LockID); err != nil {
+		t.Fatalf("Failed to release the second job lock: %v", err)
+	}
+	log.Println("Second job completed successfully.")
+}
+
+// TestJobFailureRecovery
+/*
+Test 3: TestJobFailureRecovery
+
+
+Purpose: This test simulates a job failure scenario where the job doesn’t release the lock, and it ensures that the lock is released when the database connection is closed, allowing a new job to start after recovery.
+
+Steps:
+
+	1.	Connect to the PostgreSQL database.
+	2.	Start the first job:
+	•	The job acquires the advisory lock, but it does not release the lock, simulating a job failure (i.e., the job crashes or terminates unexpectedly).
+	3.	The database connection is closed, simulating a session termination.
+	•	When a session is terminated, PostgreSQL automatically releases any advisory locks held by that session.
+	4.	After a short delay (500ms), we reconnect to the database.
+	5.	We attempt to acquire the lock again:
+	•	Since the previous session has been terminated, the lock should now be available.
+	6.	The test checks if the new job can acquire the lock and then releases it.
+
+What It Validates:
+
+	•	Failure Recovery: It ensures that when a job crashes or the session is terminated, PostgreSQL correctly releases the advisory lock.
+	•	Session-Based Locking: It validates that PostgreSQL advisory locks are session-based and are automatically released when the session ends.
+	•	Post-Recovery Job Execution: It checks that a new job can run and acquire the lock after the failed job’s session is terminated.
+
+*/
+func TestJobFailureRecovery(t *testing.T) {
+	db := pg.Connect(&PGOptions)
+	defer db.Close()
+
+	// Simulate a failure in the first job.
+	log.Println("Simulating a job failure...")
+	if canRun, err := acquireAdvisoryLock(db, LockID); err != nil || !canRun {
+		t.Fatalf("Failed to start the first job: %v", err)
+	}
+	// Simulate a failure by not releasing the advisory lock.
+	log.Println("Job failed without releasing the lock.")
+
+	// Now, let's simulate a failure by closing the DB connection.
+	// This forces PostgreSQL to release the advisory lock.
+	log.Println("Simulating session termination by closing the DB connection...")
+	db.Close() // Close the connection to force lock release.
+
+	// Wait for a short period to allow PostgreSQL to release the lock.
+	time.Sleep(500 * time.Millisecond)
+
+	// Reconnect to PostgreSQL (this will simulate a fresh session).
+	db = pg.Connect(&PGOptions)
+
+	// Ensure that the lock is now available after the failure and session termination.
+	log.Println("Checking if the lock is available after the session termination...")
+	if canRun, err := acquireAdvisoryLock(db, LockID); err != nil || !canRun {
+		t.Fatalf("Failed to acquire the lock after session termination: %v", err)
+	}
+	// Release the lock after the test completes.
+	if err := releaseAdvisoryLock(db, LockID); err != nil {
+		t.Fatalf("Failed to release the lock after recovery: %v", err)
+	}
+	log.Println("Lock acquired and released successfully after recovery.")
+}
+
+// TestJobCleanup
+/*
+Test 4: TestJobCleanup
+
+Purpose: This test ensures that if a job terminates abnormally (e.g., the connection to the database is lost), PostgreSQL automatically releases the advisory lock, allowing new jobs to run.
+
+Steps:
+
+ 1. Connect to the PostgreSQL database.
+ 2. Start a job:
+    •	The job acquires the advisory lock and runs.
+ 3. Simulate an abnormal termination:
+    •	The database connection is closed, simulating an abnormal job termination.
+    •	Since PostgreSQL releases advisory locks when the connection is closed, the lock should be released.
+ 4. Reconnect to the database to simulate a new session.
+ 5. Attempt to acquire the lock again:
+    •	Since the previous session has ended, the advisory lock should now be available.
+ 6. The lock is acquired and then released after the job completes.
+
+What It Validates:
+
+  - Automatic Lock Cleanup: It checks that PostgreSQL automatically releases advisory locks when the session ends (i.e., when the job terminates or the connection is closed).
+  - Recovery After Abnormal Termination: It ensures that a new job can acquire the lock after an abnormal termination or disconnect.
+*/
+func TestJobCleanup(t *testing.T) {
+	db := pg.Connect(&PGOptions)
+	defer db.Close()
+
+	// Simulate a running job.
+	log.Println("Starting a job to test cleanup...")
+	if canRun, err := acquireAdvisoryLock(db, LockID); err != nil || !canRun {
+		t.Fatalf("Failed to acquire advisory lock for cleanup test: %v", err)
+	}
+	log.Println("Job running, lock acquired.")
+
+	// Simulate abnormal termination by closing the DB connection (releases the advisory lock).
+	log.Println("Simulating abnormal termination (disconnecting from DB)...")
+	db.Close() // Close the connection to PostgreSQL to force the lock to be released.
+
+	// Reconnect to the DB to simulate a new session.
+	db = pg.Connect(&PGOptions)
+
+	// Attempt to acquire the lock again. Since the previous session has ended, the lock should be available.
+	log.Println("Checking if the lock is available after the session termination...")
+	if canRun, err := acquireAdvisoryLock(db, LockID); err != nil || !canRun {
+		t.Fatalf("Failed to acquire the lock after previous session ended: %v", err)
+	}
+	// Release the lock after cleanup.
+	if err := releaseAdvisoryLock(db, LockID); err != nil {
+		t.Fatalf("Failed to release the lock after cleanup: %v", err)
+	}
+	log.Println("Job completed and lock released after session termination.")
+}
+```
+
+```bash
+go test -v
+```

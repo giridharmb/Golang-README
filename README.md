@@ -11933,45 +11933,45 @@ go test -v
 
 How Advisory Locks Work in PostgreSQL:
 
-	1.	Session-Based Locks: PostgreSQL advisory locks are tied to the database connection/session. Once a session acquires the lock, it will hold it until:
-    	•	The session releases the lock.
-    	•	The session ends (either due to disconnect or crash).
-	2.	Non-blocking Nature:
-    	•	pg_try_advisory_lock does not block. It returns true if it acquires the lock and false if the lock is already held by another session.
-	3.	Global Locking:
-    	•	Advisory locks are global within the PostgreSQL instance, meaning even if two processes (or virtual machines) connect to the same PostgreSQL instance using different sessions, they will still check the same global advisory lock.
-    	•	This global nature ensures that no two sessions, regardless of machine or location, can acquire the same lock simultaneously.
+ - Session-Based Locks: PostgreSQL advisory locks are tied to the database connection/session. Once a session acquires the lock, it will hold it until:
+    - The session releases the lock.
+    - The session ends (either due to disconnect or crash).
+- Non-blocking Nature:
+    - pg_try_advisory_lock does not block. It returns true if it acquires the lock and false if the lock is already held by another session.
+- Global Locking:
+    - Advisory locks are global within the PostgreSQL instance, meaning even if two processes (or virtual machines) connect to the same PostgreSQL instance using different sessions, they will still check the same global advisory lock.
+    - This global nature ensures that no two sessions, regardless of machine or location, can acquire the same lock simultaneously.
 
 How Advisory Locks Avoid Race Conditions:
 
 If multiple processes (on different machines or within the same machine) attempt to run the job, they would follow this pattern:
 
-	1.	Session 1 (VM 1) tries to acquire the advisory lock (e.g., with pg_try_advisory_lock).
-	    •	If the lock is available, Session 1 acquires it and runs the job.
-	    •	Session 2 (VM 2) will try to acquire the same lock.
-	    •	Since Session 1 already holds the lock, Session 2 will immediately fail to acquire it, as advisory locks are non-blocking.
-	2.	Session 2 can check the result (pg_try_advisory_lock returning false) and skip running the job.
-	    •	This ensures that even if both instances (VMs) run the same code simultaneously, only one will acquire the lock and run the job.
-	3.	When Session 1 finishes the job, it releases the lock (using pg_advisory_unlock), making the lock available again.
-	4.	If Session 1 crashes or the connection drops before the job completes, PostgreSQL will automatically release the advisory lock, allowing another session to acquire it.
+- Session 1 (VM 1) tries to acquire the advisory lock (e.g., with pg_try_advisory_lock).
+    - If the lock is available, Session 1 acquires it and runs the job.
+    - Session 2 (VM 2) will try to acquire the same lock.
+    - Since Session 1 already holds the lock, Session 2 will immediately fail to acquire it, as advisory locks are non-blocking.
+- Session 2 can check the result (pg_try_advisory_lock returning false) and skip running the job.
+    - This ensures that even if both instances (VMs) run the same code simultaneously, only one will acquire the lock and run the job.
+- When Session 1 finishes the job, it releases the lock (using pg_advisory_unlock), making the lock available again.
+- If Session 1 crashes or the connection drops before the job completes, PostgreSQL will automatically release the advisory lock, allowing another session to acquire it.
 
 Guarantees Across Virtual Machines:
 
-	•	No Race Conditions: Because the advisory lock is global across the PostgreSQL instance, even if you have multiple virtual machines (VMs) trying to acquire the same lock, PostgreSQL will ensure that only one VM holds the lock at a time. The others will fail to acquire it (false) and can skip the job execution.
-	•	Idempotency: If the job fails or the virtual machine crashes, the lock will be released automatically, ensuring that another instance can pick up the job.
+ - No Race Conditions: Because the advisory lock is global across the PostgreSQL instance, even if you have multiple virtual machines (VMs) trying to acquire the same lock, PostgreSQL will ensure that only one VM holds the lock at a time. The others will fail to acquire it (false) and can skip the job execution.
+ - Idempotency: If the job fails or the virtual machine crashes, the lock will be released automatically, ensuring that another instance can pick up the job.
 
 Here’s Why It Works Across VMs:
 
-	1.	Global Lock Management: PostgreSQL manages advisory locks globally across sessions. Any session attempting to acquire the lock is aware of other sessions, even across machines.
-	2.	Lock Acquisition: When a virtual machine attempts to acquire the lock, PostgreSQL checks the global state to see if the lock is available.
-	3.	Non-blocking Check: Other VMs trying to acquire the same lock will immediately know if another VM has already acquired it and can avoid running the job, preventing race conditions.
+- Global Lock Management: PostgreSQL manages advisory locks globally across sessions. Any session attempting to acquire the lock is aware of other sessions, even across machines.
+- Lock Acquisition: When a virtual machine attempts to acquire the lock, PostgreSQL checks the global state to see if the lock is available.
+- Non-blocking Check: Other VMs trying to acquire the same lock will immediately know if another VM has already acquired it and can avoid running the job, preventing race conditions.
 
 Example Flow Across Two VMs:
 
-	1.	VM 1 connects to PostgreSQL and calls pg_try_advisory_lock. It acquires the lock and starts running the job.
-	2.	VM 2 tries to acquire the same lock. Since VM 1 already holds the lock, VM 2 gets false from pg_try_advisory_lock and skips the job.
-	3.	VM 1 finishes the job and releases the lock with pg_advisory_unlock.
-	4.	VM 2 or another VM can now acquire the lock and run the next job.
+- VM 1 connects to PostgreSQL and calls pg_try_advisory_lock. It acquires the lock and starts running the job.
+- VM 2 tries to acquire the same lock. Since VM 1 already holds the lock, VM 2 gets false from pg_try_advisory_lock and skips the job.
+- VM 1 finishes the job and releases the lock with pg_advisory_unlock.
+- VM 2 or another VM can now acquire the lock and run the next job.
 
 What if the First VM Crashes?
 
@@ -12194,14 +12194,14 @@ Objective: To test the loading of database configuration from a JSON file.
 
 What it does:
 
-	•	The test creates a temporary file and writes a mock JSON configuration into it.
-	•	It verifies that the configuration file can be correctly parsed, ensuring the values loaded match the expected values.
-	•	It also tests that the function returns an error when required fields (like Password and Database) are missing.
+- The test creates a temporary file and writes a mock JSON configuration into it.
+- It verifies that the configuration file can be correctly parsed, ensuring the values loaded match the expected values.
+- It also tests that the function returns an error when required fields (like Password and Database) are missing.
 
 Key Points:
 
-	•	Verifies the correctness of loading JSON-based configuration.
-	•	Ensures error handling when the configuration is incomplete.
+- Verifies the correctness of loading JSON-based configuration.
+- Ensures error handling when the configuration is incomplete.
 
 2. TestJobConcurrency
 
@@ -12209,15 +12209,15 @@ Objective: To simulate multiple instances of a job trying to run concurrently an
 
 What it does:
 
-	•	It simulates 10 instances (representing multiple virtual machines or processes) trying to acquire the same PostgreSQL advisory lock (pg_try_advisory_lock).
-	•	Each instance checks if it can run the job by acquiring the lock. Only one should succeed.
-	•	Once the job finishes, the lock is released.
-	•	It verifies that only one instance was able to acquire the lock and run the job.
+- It simulates 10 instances (representing multiple virtual machines or processes) trying to acquire the same PostgreSQL advisory lock (pg_try_advisory_lock).
+- Each instance checks if it can run the job by acquiring the lock. Only one should succeed.
+- Once the job finishes, the lock is released.
+- It verifies that only one instance was able to acquire the lock and run the job.
 
 Key Points:
 
-	•	Tests concurrency to ensure no race conditions occur.
-	•	Verifies that only one job instance runs at a time.
+- Tests concurrency to ensure no race conditions occur.
+- Verifies that only one job instance runs at a time.
 
 3. TestJobFailureRecovery
 
@@ -12225,16 +12225,16 @@ Objective: To simulate a job failure and verify that the job can recover after t
 
 What it does:
 
-	•	Simulates acquiring a lock by one instance and intentionally not releasing it (to simulate failure).
-	•	The test closes the database connection to simulate a session termination (or crash).
-	•	It then reconnects and verifies that the lock is released automatically due to the session closure.
-	•	The test ensures that after the failure, another instance can acquire the lock and continue the job.
+- Simulates acquiring a lock by one instance and intentionally not releasing it (to simulate failure).
+- The test closes the database connection to simulate a session termination (or crash).
+- It then reconnects and verifies that the lock is released automatically due to the session closure.
+- The test ensures that after the failure, another instance can acquire the lock and continue the job.
 
 Key Points:
 
-	•	Simulates job failure scenarios.
-	•	Ensures PostgreSQL automatically releases locks when a session crashes.
-	•	Verifies the job can recover and run after a failure.
+- Simulates job failure scenarios.
+- Ensures PostgreSQL automatically releases locks when a session crashes.
+- Verifies the job can recover and run after a failure.
 
 4. TestJobCleanup
 
@@ -12242,14 +12242,14 @@ Objective: To simulate and verify that the advisory lock is correctly released a
 
 What it does:
 
-	•	Simulates acquiring a lock for a running job.
-	•	Closes the database connection (simulating an abnormal termination).
-	•	Reconnects to the database and verifies that the lock is available again for acquisition, ensuring the lock was released when the session was terminated.
+- Simulates acquiring a lock for a running job.
+- Closes the database connection (simulating an abnormal termination).
+- Reconnects to the database and verifies that the lock is available again for acquisition, ensuring the lock was released when the session was terminated.
 
 Key Points:
 
-	•	Tests if locks are properly cleaned up when a session is terminated unexpectedly.
-	•	Ensures that advisory locks are released when a session ends.
+- Tests if locks are properly cleaned up when a session is terminated unexpectedly.
+- Ensures that advisory locks are released when a session ends.
 
 5. TestInvalidLockID
 
@@ -12257,14 +12257,14 @@ Objective: To test the behavior of the system when an invalid lock ID is passed.
 
 What it does:
 
-	•	Attempts to acquire an advisory lock with an invalid lock ID (-1).
-	•	In PostgreSQL, advisory locks can actually work with negative integers, so the test verifies that the lock can still be acquired even with a negative lock ID.
-	•	Verifies that no errors occur and the lock is successfully acquired.
+- Attempts to acquire an advisory lock with an invalid lock ID (-1).
+- In PostgreSQL, advisory locks can actually work with negative integers, so the test verifies that the lock can still be acquired even with a negative lock ID.
+- Verifies that no errors occur and the lock is successfully acquired.
 
 Key Points:
 
-	•	Tests edge cases where invalid or unexpected lock IDs are used.
-	•	Ensures that PostgreSQL handles negative lock IDs without error.
+- Tests edge cases where invalid or unexpected lock IDs are used.
+- Ensures that PostgreSQL handles negative lock IDs without error.
 
 6. TestLockTimeout
 
@@ -12272,14 +12272,14 @@ Objective: To simulate two instances trying to acquire the same lock and ensure 
 
 What it does:
 
-	•	Instance 1 acquires the lock and holds it for a few seconds.
-	•	During that time, Instance 2 attempts to acquire the lock and is expected to fail since Instance 1 is already holding the lock.
-	•	After Instance 1 releases the lock, the test verifies that Instance 2 never acquired the lock while it was held by Instance 1.
+- Instance 1 acquires the lock and holds it for a few seconds.
+- During that time, Instance 2 attempts to acquire the lock and is expected to fail since Instance 1 is already holding the lock.
+- After Instance 1 releases the lock, the test verifies that Instance 2 never acquired the lock while it was held by Instance 1.
 
 Key Points:
 
-	•	Ensures that PostgreSQL advisory locks prevent multiple instances from running the job at the same time.
-	•	Simulates a “lock timeout” where one instance waits while another holds the lock.
+- Ensures that PostgreSQL advisory locks prevent multiple instances from running the job at the same time.
+- Simulates a “lock timeout” where one instance waits while another holds the lock.
 
 7. TestConcurrentJobCompletion
 
@@ -12287,15 +12287,15 @@ Objective: To simulate two jobs completing at nearly the same time and ensure pr
 
 What it does:
 
-	•	Two jobs try to complete and release the lock at the same time.
-	•	Job 1 acquires the lock first and releases it.
-	•	Job 2 tries to release the lock after Job 1, but it should not release the lock because Job 1 already released it.
-	•	The test ensures that Job 2 does not erroneously release the lock after Job 1 finishes.
+- Two jobs try to complete and release the lock at the same time.
+- Job 1 acquires the lock first and releases it.
+- Job 2 tries to release the lock after Job 1, but it should not release the lock because Job 1 already released it.
+- The test ensures that Job 2 does not erroneously release the lock after Job 1 finishes.
 
 Key Points:
 
-	•	Simulates concurrent job completion.
-	•	Ensures that multiple jobs do not erroneously release the lock at the same time.
+- Simulates concurrent job completion.
+- Ensures that multiple jobs do not erroneously release the lock at the same time.
 
 8. TestJobResilienceAfterRestart
 
@@ -12303,24 +12303,24 @@ Objective: To simulate a system restart (or crash) and ensure that the job can r
 
 What it does:
 
-	•	Simulates acquiring a lock (indicating the job is running).
-	•	Then it closes the database connection to simulate a system crash.
-	•	After a brief downtime, the system reconnects to the database, and the test verifies that the lock is released after the restart.
-	•	The test checks that the job can resume by acquiring the lock after the restart and releasing it properly.
+- Simulates acquiring a lock (indicating the job is running).
+- Then it closes the database connection to simulate a system crash.
+- After a brief downtime, the system reconnects to the database, and the test verifies that the lock is released after the restart.
+- The test checks that the job can resume by acquiring the lock after the restart and releasing it properly.
 
 Key Points:
 
-	•	Simulates system crashes and restarts.
-	•	Ensures jobs are resilient and can recover after a restart.
-	•	Verifies that locks are correctly managed even after system restarts.
+- Simulates system crashes and restarts.
+- Ensures jobs are resilient and can recover after a restart.
+- Verifies that locks are correctly managed even after system restarts.
 
 Overall Test Coverage:
 
-	•	Configuration Testing: Validates loading of configurations from a JSON file.
-	•	Concurrency: Tests for ensuring that only one job instance can run at a time, even when multiple instances try to acquire the lock.
-	•	Failure Recovery: Ensures that the job can recover after a failure or crash.
-	•	Cleanup: Verifies that locks are cleaned up properly after abnormal termination.
-	•	Resilience: Tests the system’s ability to recover and continue jobs after restarts or crashes.
+- Configuration Testing: Validates loading of configurations from a JSON file.
+- Concurrency: Tests for ensuring that only one job instance can run at a time, even when multiple instances try to acquire the lock.
+- Failure Recovery: Ensures that the job can recover after a failure or crash.
+- Cleanup: Verifies that locks are cleaned up properly after abnormal termination.
+- Resilience: Tests the system’s ability to recover and continue jobs after restarts or crashes.
 
 These tests cover a wide range of scenarios to ensure the robustness of the system, particularly in environments where multiple instances may be running simultaneously.
 

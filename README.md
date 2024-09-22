@@ -11456,7 +11456,80 @@ Logs have been sent to the configured log destinations.
 
 #### [PostgreSQL Locks To Ensure Single Instance Runs Even Thought It Is Deployed On Multiple Instances](#postgresql-locks-to-ensure-single-instance-runs-even-thought-it-is-deployed-on-multiple-instances)
 
-Main Program `main.go`
+> Notes
+
+```
+PostgreSQL advisory lock mechanism used in this code will work even if the code is running on different 
+virtual machines. This is because PostgreSQL advisory locks are managed at the database level, meaning as 
+long as all your instances (VMs, containers, etc.) are connected to the same PostgreSQL database, 
+the advisory lock will ensure that only one instance can acquire the lock at any given time.
+
+How It Works Across Different VMs:
+
+ - Shared Database: Since all the virtual machines are connected to the same PostgreSQL database, 
+   the advisory lock (pg_try_advisory_lock) works across the different VMs.
+   
+ - Global Locking: PostgreSQL manages the locks globally, across all connections. If one instance 
+   acquires the advisory lock, no other instance will be able to acquire that lock until it is released 
+   by the instance holding it (or until the session that holds the lock is terminated).
+   
+ - Session-Based Locking: PostgreSQL advisory locks are tied to the database session. 
+   When a session (i.e., the connection) closes, all locks held by that session are automatically released. 
+   This ensures that if a job crashes or the VM is terminated, the lock is not held indefinitely, 
+   allowing other instances to acquire it and run the job.
+   
+ - pg_try_advisory_lock Behavior:
+ 
+ - When a VM instance tries to acquire a lock using pg_try_advisory_lock, it returns true if the 
+   lock is successfully acquired, and false if the lock is already held by another session 
+   (on a different VM, for example).
+   
+ - Oy one session at a time will be able to acquire the lock based on the unique lock ID (in your case, LockID = 1).
+
+Example Scenario:
+
+- VM1 tries to acquire the advisory lock for LockID = 1. If no other instance is running the job and 
+  holding this lock, VM1 will acquire the lock and run the job.
+  
+- VM2 starts at the same time and also tries to acquire the advisory lock for LockID = 1. 
+  Since VM1 already holds the lock, VM2 will fail to acquire the lock and skip running the job.
+  
+- After VM1 completes the job, it releases the lock, making it available again.
+
+- VM2 (or any other VM) can now acquire the lock and run the job.
+
+Idempotency:
+
+The lock ensures idempotency by preventing multiple instances from running the same job simultaneously. 
+As long as the job is running in one instance (VM1), no other instance (e.g., VM2) can run the job. 
+This ensures that only one job is executed at any given time, avoiding duplication or conflicting operations.
+
+Fail-Safe Behavior:
+
+ - Crash Recovery: If a VM holding the lock crashes or loses its connection to the PostgreSQL database, 
+   the lock will be automatically released by PostgreSQL when the session is closed. This ensures that 
+   another VM can acquire the lock and run the job without manual intervention.
+   
+ - Job Failures: If the job fails but the session remains open, the lock will continue to be held until the session 
+   ends or the lock is manually released. Proper error handling and releasing the lock in your job logic 
+   (as you’ve done with defer releaseAdvisoryLock(db, LockID)) ensures the lock is properly released after each job.
+
+Conclusion:
+
+ - Yes, this locking mechanism will work across multiple virtual machines as long as they are all 
+   connected to the same PostgreSQL database.
+ 
+ - The PostgreSQL advisory lock will ensure that only one instance can run the job at any given time, 
+   even across different VMs or containers.
+ 
+ - The session-based nature of advisory locks ensures fail-safety and automatic cleanup 
+   if the VM holding the lock crashes.
+
+- This approach ensures idempotency and prevents race conditions, making it suitable for distributed job 
+  execution across multiple machines.
+```
+
+> Main Program `main.go`
 
 ```go
 package main
@@ -11565,7 +11638,7 @@ func main() {
 }
 ```
 
-Unit Test : `main_test.go`
+> Unit Test : `main_test.go`
 
 ```go
 package main
@@ -11838,6 +11911,8 @@ func TestJobCleanup(t *testing.T) {
 	log.Println("Job completed and lock released after session termination.")
 }
 ```
+
+> Unit Test
 
 ```bash
 go test -v

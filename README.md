@@ -11458,7 +11458,6 @@ Logs have been sent to the configured log destinations.
 
 > Notes
 
-```
 PostgreSQL advisory lock mechanism used in this code will work even if the code is running on different 
 virtual machines. This is because PostgreSQL advisory locks are managed at the database level, meaning as 
 long as all your instances (VMs, containers, etc.) are connected to the same PostgreSQL database, 
@@ -11527,7 +11526,6 @@ Conclusion:
 
 - This approach ensures idempotency and prevents race conditions, making it suitable for distributed job 
   execution across multiple machines.
-```
 
 > Main Program `main.go`
 

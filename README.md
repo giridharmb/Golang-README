@@ -168,6 +168,8 @@
 
 [Factory Pattern PostgreSQL Locks To Ensure Single Instance Runs Even Thought It Is Deployed On Multiple Instances](#factory-pattern-postgresql-locks-to-ensure-single-instance-runs-even-thought-it-is-deployed-on-multiple-instances)
 
+[Fetch From BigQuery And Upsert On PostgreSQL]([#fetch-from-bigquery-and-upsert-on-postgresql])
+
 <hr/>
 
 #### [Setup Golang](#setup-golang)
@@ -12699,4 +12701,185 @@ Run All Unit Tests >
 
 Run Individual Tests >
     go test -run TestLockTimeout -v
+```
+
+#### [Fetch From BigQuery And Upsert On PostgreSQL]([#fetch-from-bigquery-and-upsert-on-postgresql])
+
+> What This Program Does ?
+- Source (BigQuery) ->> Destination (PostgreSQL)
+- Fetch Records From From BigQuery
+- Perform Upserts Of BQ Records In Batches On PostgreSQL DB
+
+> BigQuery Columns (Source)
+
+```
+resource_id -> STRING (BigQuery Column Type)
+properties  -> STRING (BigQuery Column Type) -> (JSON In STRING Format)
+```
+
+> PostgreSQL Columns (Destination)
+
+```
+resource_id -> TEXT (PostgreSQL Column Type)
+metadata    -> JSONB (PostgreSQL Column Type)
+```
+
+```go
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"gorm.io/gorm/clause"
+	"log"
+	"time"
+
+	"cloud.google.com/go/bigquery"
+	"google.golang.org/api/iterator"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+)
+
+var GCPProject = "some-project"
+
+// Record represents the PostgreSQL model for the table
+type Record struct {
+	ResourceID string          `gorm:"column:resource_id;primaryKey"`
+	Metadata   json.RawMessage `gorm:"column:metadata;type:jsonb"`
+}
+
+func (Record) TableName() string {
+	return "my_table"
+}
+
+func main() {
+	// Initialize PostgreSQL connection with GORM
+	dsn := "host=<IP_ADDR> user=<SOM_USER> password=<REDACTED> dbname=<SOME_DB> port=5432 sslmode=disable TimeZone=UTC"
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("Failed to connect to PostgreSQL: %v", err)
+	}
+
+	db.AutoMigrate(&Record{})
+
+	// Initialize BigQuery client
+	ctx := context.Background()
+	projectID := GCPProject // Replace with your project ID
+
+	bqClient, err := bigquery.NewClient(ctx, projectID)
+	if err != nil {
+		log.Fatalf("Failed to create BigQuery client: %v", err)
+	}
+	defer bqClient.Close()
+
+	// Define your BigQuery query
+	queryString := `SELECT resource_id, properties FROM my_data_set.my_custom_table;`
+
+	query := bqClient.Query(queryString)
+
+	query.AllowLargeResults = true
+
+	// Run the query and get an iterator
+	it, err := query.Read(ctx)
+	if err != nil {
+		log.Fatalf("Failed to run query: %v", err)
+	}
+
+	// Channel to buffer records
+	recordChan := make(chan Record, 500) // Buffered channel for records
+	batchSize := 500                     // Number of records to batch insert
+	batchTimeout := 5 * time.Second      // Timeout for batch insert
+
+	// Start the background goroutine to handle batch inserts
+	go insertRecordsInBatches(db, recordChan, batchSize, batchTimeout)
+
+	// Read records from BigQuery and send them to the channel
+	for {
+		var row struct {
+			ResourceID  string `bigquery:"resource_id"`
+			Properties string `bigquery:"properties"`
+		}
+
+		err := it.Next(&row)
+		if errors.Is(err, iterator.Done) {
+			// No more rows, close the channel
+			close(recordChan)
+			break
+		}
+		if err != nil {
+			log.Fatalf("Error reading from BigQuery iterator: %v", err)
+		}
+
+		// Parse the properties field as JSON
+		var properties json.RawMessage
+		err = json.Unmarshal([]byte(row.Properties), &properties)
+		if err != nil {
+			log.Printf("Failed to parse properties JSON for resource_id %s: %v", row.ResourceID, err)
+			continue
+		}
+
+		// Send the record to the channel
+		recordChan <- Record{
+			ResourceID: row.ResourceID,
+			Metadata:   properties,
+		}
+	}
+}
+
+// Function to insert records in batches into PostgreSQL
+func insertRecordsInBatches(db *gorm.DB, recordChan <-chan Record, batchSize int, batchTimeout time.Duration) {
+	var batch []Record
+	timer := time.NewTimer(batchTimeout)
+
+	for {
+		select {
+		case record, ok := <-recordChan:
+			if !ok {
+				// Channel closed, insert the remaining records in the last batch
+				if len(batch) > 0 {
+					insertBatch(db, batch)
+				}
+				return
+			}
+
+			// Add the record to the batch
+			batch = append(batch, record)
+
+			// If batch size is reached, insert the batch
+			if len(batch) >= batchSize {
+				insertBatch(db, batch)
+				batch = nil               // Reset the batch
+				timer.Reset(batchTimeout) // Reset the timer
+			}
+
+		case <-timer.C:
+			// Timeout reached, insert whatever is in the batch
+			if len(batch) > 0 {
+				insertBatch(db, batch)
+				batch = nil // Reset the batch
+			}
+			timer.Reset(batchTimeout) // Reset the timer for the next batch
+		}
+	}
+}
+
+// Function to insert a batch of records into the database
+func insertBatch(db *gorm.DB, batch []Record) {
+	fmt.Printf("Inserting batch of %d records\n", len(batch))
+	// Use GORM's OnConflict to handle insert or update
+	err := db.Clauses(
+		clause.OnConflict{
+			Columns:   []clause.Column{{Name: "resource_id"}},         // Specify the column to check for conflicts
+			DoUpdates: clause.AssignmentColumns([]string{"metadata"}), // Specify the column to update if conflict occurs
+		},
+	).Create(&batch).Error
+
+	if err != nil {
+		log.Printf("Failed to insert batch: %v", err)
+	} else {
+		fmt.Printf("Successfully inserted %d records\n", len(batch))
+	}
+}
 ```

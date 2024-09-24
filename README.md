@@ -168,7 +168,7 @@
 
 [Factory Pattern PostgreSQL Locks To Ensure Single Instance Runs Even Thought It Is Deployed On Multiple Instances](#factory-pattern-postgresql-locks-to-ensure-single-instance-runs-even-thought-it-is-deployed-on-multiple-instances)
 
-[Fetch From BigQuery And Upsert On PostgreSQL]([#fetch-from-bigquery-and-upsert-on-postgresql])
+[Fetch From BigQuery And Upsert On PostgreSQL](#fetch-from-bigquery-and-upsert-on-postgresql)
 
 <hr/>
 
@@ -12703,7 +12703,7 @@ Run Individual Tests >
     go test -run TestLockTimeout -v
 ```
 
-#### [Fetch From BigQuery And Upsert On PostgreSQL]([#fetch-from-bigquery-and-upsert-on-postgresql])
+#### [Fetch From BigQuery And Upsert On PostgreSQL](#fetch-from-bigquery-and-upsert-on-postgresql)
 
 > What This Program Does ?
 - Source (BigQuery) ->> Destination (PostgreSQL)

@@ -170,6 +170,8 @@
 
 [Fetch From BigQuery And Upsert On PostgreSQL](#fetch-from-bigquery-and-upsert-on-postgresql)
 
+[Search API With AND OR Exact Non-Exact Search V1](#search-api-with-and-or-exact-non-exact-search-v1)
+
 <hr/>
 
 #### [Setup Golang](#setup-golang)
@@ -12880,6 +12882,590 @@ func insertBatch(db *gorm.DB, batch []Record) {
 		log.Printf("Failed to insert batch: %v", err)
 	} else {
 		fmt.Printf("Successfully inserted %d records\n", len(batch))
+	}
+}
+```
+
+#### [Search API With AND OR Exact Non-Exact Search V1](#search-api-with-and-or-exact-non-exact-search-v1)
+
+- Rate Limiting
+- CORS
+- Exact / Non-Exact (Pattern Matching) Search
+- AND Search
+- OR Search
+
+`main.go`
+
+```go
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"github.com/gorilla/handlers"
+	"github.com/gorilla/mux"
+	"log"
+	"net"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+)
+
+/*
+
+http://127.0.0.1:8080//search?search=User1&exact=true
+
+http://127.0.0.1:8080//search?search=User1&exact=false
+
+http://127.0.0.1:8080//search?search=User1,user2&exact=true&type=OR
+
+http://127.0.0.1:8080//search?search=User1,user2&exact=true&type=OR
+
+http://127.0.0.1:8080//search?search=User1,user2&exact=false&type=OR
+
+http://127.0.0.1:8080//search?search=User1,City1&exact=true&type=AND
+
+http://127.0.0.1:8080//search?search=User1,City1&exact=false&type=AND
+
+http://127.0.0.1:8080//search?search=User1,City1&exact=false&type=AND
+
+*/
+
+// Global map to track client requests and mutex for thread safety
+var clientRequestTracker = make(map[string]bool)
+var mu sync.Mutex
+
+var ListenPort = "8080"
+
+// Simulating a large list of records
+var records = generateSampleData(1000) // Simulate 1000 records for the demo
+
+// Generate sample data for testing
+func generateSampleData(n int) []map[string]interface{} {
+	var sampleData []map[string]interface{}
+	for i := 1; i <= n; i++ {
+		sampleData = append(sampleData, map[string]interface{}{
+			"id":            i,
+			"name":          fmt.Sprintf("User%d", i),
+			"email":         fmt.Sprintf("user%d@example.com", i),
+			"age":           i + 20,
+			"city":          fmt.Sprintf("City%d", i),
+			"pay_per_month": float64(i) * 100.55, // Adding pay_per_month as float
+		})
+	}
+	return sampleData
+}
+
+// Function to get the client IP address (without the port)
+func getClientIP(r *http.Request) string {
+	// Extract the IP address and ignore the port
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return ""
+	}
+	log.Printf("IP_ADDRESS : %v", ip)
+	return ip
+}
+
+// Middleware to limit one request per client at a time
+func rateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientID := getClientIP(r)
+
+		// Lock the mutex to check the client's request status
+		mu.Lock()
+		if clientRequestTracker[clientID] {
+			// Client already has a request in progress
+
+			w.WriteHeader(http.StatusTooManyRequests)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "You Are Making Too Many (May Be In Parallel ?) Requests. Make One Request At A Time.",
+			})
+
+			mu.Unlock()
+			//http.Error(w, "Too many requests. Only one request allowed per client.", http.StatusTooManyRequests)
+			return
+		}
+
+		// Mark client as having an active request
+		clientRequestTracker[clientID] = true
+		mu.Unlock()
+
+		// Call the next handler in the chain
+		next.ServeHTTP(w, r)
+
+		// Once the request is done, mark client as available
+		mu.Lock()
+		delete(clientRequestTracker, clientID)
+		mu.Unlock()
+	})
+}
+
+/*
+// To Simulate >> Too Many Requests Per Client >>
+
+func searchHandler(w http.ResponseWriter, r *http.Request) {
+	// Simulate long-running operation
+	time.Sleep(5 * time.Second)
+
+	// Respond with JSON data
+	response := map[string]string{
+		"message": fmt.Sprintf("Request from %s completed", r.RemoteAddr),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+*/
+
+func main() {
+	// Initialize the router
+	r := mux.NewRouter()
+
+	r.Use(rateLimitMiddleware)
+
+	// Define the search endpoint
+	r.HandleFunc("/search", searchHandler).Methods("GET")
+
+	// Enable CORS for all origins
+	// You can customize the allowed methods and headers if needed
+	corsHandler := handlers.CORS(
+		handlers.AllowedOrigins([]string{"*"}),                             // Allow all origins
+		handlers.AllowedMethods([]string{"GET", "POST"}),                   // Allow specific methods (GET and POST in this case)
+		handlers.AllowedHeaders([]string{"Content-Type", "Authorization"}), // Allow headers
+	)
+
+	// Start the server
+	fmt.Println("Server is running on port 8080...")
+	log.Fatal(http.ListenAndServe(":"+ListenPort, corsHandler(r)))
+}
+
+// Handler to search records and paginate
+func searchHandler(w http.ResponseWriter, r *http.Request) {
+
+	// Set response header as application/json
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get the 'search' query parameter from URL (can be empty)
+	searchQuery := r.URL.Query().Get("search")
+	searchType := r.URL.Query().Get("type")  // Can be 'AND' or 'OR'
+	exactMatch := r.URL.Query().Get("exact") // Can be 'true' or 'false'
+
+	pageSize := 10 // Set a default page size
+
+	// Get the pagination token
+	paginationToken := r.URL.Query().Get("page")
+	var startIndex int
+
+	// If a pagination token exists, get the start index from it
+	if paginationToken != "" {
+		var err error
+		startIndex, err = strconv.Atoi(paginationToken)
+		if err != nil || startIndex < 0 {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "Invalid pagination token",
+			})
+			return
+		}
+	} else {
+		startIndex = 0
+	}
+
+	// If search query is not provided, return all paginated results
+	if searchQuery == "" {
+		// Paginate all results
+		endIndex := startIndex + pageSize
+		if startIndex >= len(records) {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{
+				"error": "No records found",
+			})
+			return
+		}
+		if endIndex > len(records) {
+			endIndex = len(records)
+		}
+
+		paginatedResults := records[startIndex:endIndex]
+
+		// Generate the next page token only if there are more records
+		var nextPageToken string
+		if endIndex < len(records) {
+			nextPageToken = strconv.Itoa(endIndex)
+		}
+
+		// Generate the previous page token only if applicable
+		var prevPageToken string
+		if startIndex > 0 {
+			prevPageToken = strconv.Itoa(startIndex - pageSize)
+			if startIndex-pageSize < 0 {
+				prevPageToken = "0"
+			}
+		}
+
+		// Response structure with data and next/previous page links
+		response := map[string]interface{}{
+			"data": paginatedResults,
+		}
+
+		// Include next and previous links only if more pages exist
+		if nextPageToken != "" {
+			response["next"] = fmt.Sprintf("/search?page=%s", nextPageToken)
+		}
+		if prevPageToken != "" {
+			response["previous"] = fmt.Sprintf("/search?page=%s", prevPageToken)
+		}
+
+		// Return the paginated results as JSON
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	// Validate the search query using a regular expression (allow '@', '_', ';', '$', '.', '-')
+	// Spaces and other characters are disallowed
+	validSearchQuery := `^[a-zA-Z0-9@_$.;-]+(,[a-zA-Z0-9@_$.;-]+)*$`
+	matched, err := regexp.MatchString(validSearchQuery, searchQuery)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Internal server error",
+		})
+		return
+	}
+
+	if !matched {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "Invalid search query. Only alphanumeric characters, '@', '_', ';', '$', '.', and '-' are allowed. No spaces are permitted.",
+		})
+		return
+	}
+
+	// Split the search terms by comma
+	searchTerms := strings.Split(searchQuery, ",")
+
+	// Convert the search terms to lowercase for case-insensitive comparison
+	for i := range searchTerms {
+		searchTerms[i] = strings.ToLower(strings.TrimSpace(searchTerms[i]))
+	}
+
+	// Filtered results
+	var filteredResults []map[string]interface{}
+
+	// Determine if we are doing an exact search or not
+	isExact := strings.ToLower(exactMatch) == "true"
+
+	// Loop over the records and apply the search logic
+	for _, record := range records {
+		// Perform search based on the specified search type (AND/OR)
+		if searchType == "AND" {
+			if matchAllSearchTerms(record, searchTerms, isExact) {
+				filteredResults = append(filteredResults, record)
+			}
+		} else { // Default to OR search if not specified
+			if matchAnySearchTerm(record, searchTerms, isExact) {
+				filteredResults = append(filteredResults, record)
+			}
+		}
+	}
+
+	// If no results found, return an empty array with proper status
+	if len(filteredResults) == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "No records found matching the query",
+		})
+		return
+	}
+
+	// Handle pagination for filtered results
+	endIndex := startIndex + pageSize
+	if startIndex >= len(filteredResults) {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error": "No more records found for this page",
+		})
+		return
+	}
+	if endIndex > len(filteredResults) {
+		endIndex = len(filteredResults)
+	}
+
+	paginatedResults := filteredResults[startIndex:endIndex]
+
+	// Generate the next page token only if there are more records
+	var nextPageToken string
+	if endIndex < len(filteredResults) {
+		nextPageToken = strconv.Itoa(endIndex)
+	}
+
+	// Generate the previous page token only if applicable
+	var prevPageToken string
+	if startIndex > 0 {
+		prevPageToken = strconv.Itoa(startIndex - pageSize)
+		if startIndex-pageSize < 0 {
+			prevPageToken = "0"
+		}
+	}
+
+	// Response structure with data and next/previous page links
+	response := map[string]interface{}{
+		"data": paginatedResults,
+	}
+
+	// Include next and previous links only if more pages exist
+	if nextPageToken != "" {
+		response["next"] = fmt.Sprintf("/search?search=%s&page=%s", searchQuery, nextPageToken)
+	}
+	if prevPageToken != "" {
+		response["previous"] = fmt.Sprintf("/search?search=%s&page=%s", searchQuery, prevPageToken)
+	}
+
+	// Return the paginated results as JSON
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+// matchAllSearchTerms checks if all search terms are present in the record (AND logic)
+func matchAllSearchTerms(record map[string]interface{}, searchTerms []string, isExact bool) bool {
+	for _, term := range searchTerms {
+		found := false
+		for _, value := range record {
+			if strValue, ok := value.(string); ok {
+				if isExact {
+					// Exact search: check if the whole string matches
+					if strings.EqualFold(strValue, term) {
+						found = true
+						break
+					}
+				} else {
+					// Non-exact search: check if the string contains the term
+					if strings.Contains(strings.ToLower(strValue), term) {
+						found = true
+						break
+					}
+				}
+			} else if intValue, ok := value.(int); ok {
+				// Compare integer values
+				if searchInt, err := strconv.Atoi(term); err == nil && intValue == searchInt {
+					found = true
+					break
+				}
+			} else if floatValue, ok := value.(float64); ok {
+				// Compare floating point values
+				if searchFloat, err := strconv.ParseFloat(term, 64); err == nil && floatValue == searchFloat {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			return false // If any term is not found, return false
+		}
+	}
+	return true // All terms are found
+}
+
+// matchAnySearchTerm checks if any search term is present in the record (OR logic)
+func matchAnySearchTerm(record map[string]interface{}, searchTerms []string, isExact bool) bool {
+	for _, term := range searchTerms {
+		for _, value := range record {
+			if strValue, ok := value.(string); ok {
+				if isExact {
+					// Exact search: check if the whole string matches
+					if strings.EqualFold(strValue, term) {
+						return true
+					}
+				} else {
+					// Non-exact search: check if the string contains the term
+					if strings.Contains(strings.ToLower(strValue), term) {
+						return true
+					}
+				}
+			} else if intValue, ok := value.(int); ok {
+				// Compare integer values
+				if searchInt, err := strconv.Atoi(term); err == nil && intValue == searchInt {
+					return true
+				}
+			} else if floatValue, ok := value.(float64); ok {
+				// Compare floating point values
+				if searchFloat, err := strconv.ParseFloat(term, 64); err == nil && floatValue == searchFloat {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+```
+
+`main_test.go`
+
+```go
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestSearchHandler_NoSearchQuery(t *testing.T) {
+	req, err := http.NewRequest("GET", "/search?page=0", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(searchHandler)
+
+	handler.ServeHTTP(rr, req)
+
+	// Check the status code is what we expect.
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	}
+
+	// Check the response body is a valid JSON.
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Errorf("Handler returned an invalid JSON: %v", err)
+	}
+
+	// Ensure that data has been returned
+	if _, ok := response["data"]; !ok {
+		t.Errorf("Expected 'data' field in response but did not get one")
+	}
+}
+
+func TestSearchHandler_WithValidSearchQuery(t *testing.T) {
+	req, err := http.NewRequest("GET", "/search?search=User1&exact=true&page=0", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(searchHandler)
+
+	handler.ServeHTTP(rr, req)
+
+	// Check the status code is what we expect.
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	}
+
+	// Check the response body is a valid JSON.
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Errorf("Handler returned an invalid JSON: %v", err)
+	}
+
+	// Ensure that data has been returned
+	if data, ok := response["data"].([]interface{}); ok {
+		if len(data) == 0 {
+			t.Errorf("Expected some results in data, got none")
+		}
+	} else {
+		t.Errorf("Expected 'data' field in response to be an array")
+	}
+}
+
+func TestSearchHandler_InvalidSearchQuery(t *testing.T) {
+	req, err := http.NewRequest("GET", "/search?search=User@!1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(searchHandler)
+
+	handler.ServeHTTP(rr, req)
+
+	// Check the status code is what we expect.
+	if status := rr.Code; status != http.StatusBadRequest {
+		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusBadRequest)
+	}
+
+	// Check if the error message is returned
+	expected := "Invalid search query"
+	if !strings.Contains(rr.Body.String(), expected) {
+		t.Errorf("Handler returned unexpected body: got %v want %v", rr.Body.String(), expected)
+	}
+}
+
+func TestSearchHandler_ExactMatch(t *testing.T) {
+	req, err := http.NewRequest("GET", "/search?search=City1&exact=true", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(searchHandler)
+
+	handler.ServeHTTP(rr, req)
+
+	// Check the status code is what we expect.
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	}
+
+	// Check the response body is a valid JSON.
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Errorf("Handler returned an invalid JSON: %v", err)
+	}
+
+	// Ensure that exact matching is performed
+	if data, ok := response["data"].([]interface{}); ok {
+		if len(data) != 1 {
+			t.Errorf("Expected exactly one result for exact match, but got %v", len(data))
+		}
+	} else {
+		t.Errorf("Expected 'data' field in response to be an array")
+	}
+}
+
+func TestSearchHandler_Pagination(t *testing.T) {
+	req, err := http.NewRequest("GET", "/search?page=10", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(searchHandler)
+
+	handler.ServeHTTP(rr, req)
+
+	// Check the status code is what we expect.
+	if status := rr.Code; status != http.StatusOK {
+		t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
+	}
+
+	// Check the response body is a valid JSON.
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Errorf("Handler returned an invalid JSON: %v", err)
+	}
+
+	// Ensure that data has been returned
+	if data, ok := response["data"].([]interface{}); ok {
+		if len(data) == 0 {
+			t.Errorf("Expected results in paginated data, but got none")
+		}
+	} else {
+		t.Errorf("Expected 'data' field in response to be an array")
+	}
+
+	// Ensure next page link exists
+	if _, ok := response["next"]; !ok {
+		t.Errorf("Expected 'next' field in response but did not get one")
 	}
 }
 ```

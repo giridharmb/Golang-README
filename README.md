@@ -172,6 +172,8 @@
 
 [Search API With AND OR Exact Non-Exact Search V1](#search-api-with-and-or-exact-non-exact-search-v1)
 
+[GCP StackDriver Logger V2](#gcp-stackdriver-logger-v2)
+
 <hr/>
 
 #### [Setup Golang](#setup-golang)
@@ -13467,5 +13469,273 @@ func TestSearchHandler_Pagination(t *testing.T) {
 	if _, ok := response["next"]; !ok {
 		t.Errorf("Expected 'next' field in response but did not get one")
 	}
+}
+```
+
+#### [GCP StackDriver Logger V2](#gcp-stackdriver-logger-v2)
+
+```go
+package main
+
+import (
+	"cloud.google.com/go/logging"
+	"context"
+	"encoding/json"
+	"fmt"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"log"
+	"runtime/debug"
+	"strings"
+)
+
+var StackDriverLoggerName = "application-test"
+var GCPProjectName = "my-project"
+
+type Destination int64
+
+const (
+	GCP Destination = iota
+	SYSTEM
+	SYSTEM_GOOGLE
+)
+
+var ULogConfigLogSysAndGCP LoggerConfig
+var ULogConfigLogSys LoggerConfig
+var ULogConfigLogGCP LoggerConfig
+
+var LogSys *Logger
+var LogGCP *Logger
+var LogSysGCP *Logger
+
+type LogLevel int
+
+const (
+	DEBUG LogLevel = iota
+	ERROR
+	INFO
+	WARNING
+)
+
+type LoggerConfig struct {
+	UseZap    bool
+	UseGCP    bool
+	ProjectID string
+	LogID     string
+}
+
+type Logger struct {
+	gcpLogger *logging.Logger
+	zapLogger *zap.Logger
+	config    LoggerConfig
+}
+
+type LogData struct {
+	Cloud              string      `json:"cloud,omitempty"`
+	Component          string      `json:"component,omitempty"`
+	Operation          string      `json:"operation,omitempty"`
+	Custom             string      `json:"custom,omitempty"`
+	Message            string      `json:"message,omitempty"`
+	Error              string      `json:"error,omitempty"`
+	Func               string      `json:"func,omitempty"`
+	TimeTakenMilliSecs int64       `json:"time_taken_ms,omitempty"`
+	Payload            interface{} `json:"payload,omitempty"`
+	MetaData           interface{} `json:"metadata,omitempty"`
+	Count              int64       `json:"count,omitempty"`
+}
+
+func (logData LogData) GetMapSI() map[string]interface{} {
+	data, err := json.Marshal(logData)
+	if err != nil {
+		log.Printf("json marshal failed: %v", err)
+		return nil
+	}
+
+	var result map[string]interface{}
+	err = json.Unmarshal(data, &result)
+	if err != nil {
+		log.Printf("json unmarshal failed: %v", err)
+		return nil
+	}
+	return result
+}
+
+func (logData LogData) Log(level LogLevel, destination Destination) {
+	myMap := logData.GetMapSI()
+	if myMap == nil {
+		return
+	}
+
+	if destination == SYSTEM || destination == SYSTEM_GOOGLE {
+		LogSys.Log(level, myMap)
+	}
+	if destination == GCP || destination == SYSTEM_GOOGLE {
+		LogSysGCP.Log(level, myMap)
+	}
+
+}
+
+// NewLogger initializes a new Logger instance.
+func NewLogger(config LoggerConfig) (*Logger, error) {
+	var gcpLogger *logging.Logger
+	var zapLogger *zap.Logger
+	//var err error
+
+	if config.UseGCP {
+		ctx := context.Background()
+		client, err := logging.NewClient(ctx, config.ProjectID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create GCP logging client: %v", err)
+		}
+		gcpLogger = client.Logger(config.LogID)
+	}
+
+	if config.UseZap {
+		encoderConfig := zapcore.EncoderConfig{
+			MessageKey:    "msg",
+			LevelKey:      "level",
+			TimeKey:       "ts",
+			CallerKey:     "caller",
+			StacktraceKey: "stacktrace",
+			EncodeLevel:   zapcore.CapitalLevelEncoder,
+			EncodeTime:    zapcore.ISO8601TimeEncoder,
+			EncodeCaller:  zapcore.ShortCallerEncoder,
+		}
+
+		// Create zap core with the custom encoder.
+		zapCore := zapcore.NewCore(
+			zapcore.NewConsoleEncoder(encoderConfig),
+			zapcore.AddSync(log.Writer()),
+			zap.DebugLevel, // Set log level to debug
+		)
+
+		// Remove automatic stack traces added by Zap, handle manually
+		zapLogger = zap.New(zapCore, zap.AddCaller()) // No zap.AddStacktrace()
+	}
+
+	return &Logger{
+		gcpLogger: gcpLogger,
+		zapLogger: zapLogger,
+		config:    config,
+	}, nil
+}
+
+// Log logs a message at the specified log level.
+func (l *Logger) Log(level LogLevel, msg interface{}) {
+	var severity logging.Severity
+
+	switch level {
+	case DEBUG:
+		severity = logging.Debug
+	case ERROR:
+		severity = logging.Error
+	case INFO:
+		severity = logging.Info
+	case WARNING:
+		severity = logging.Warning
+
+	}
+
+	if l.config.UseGCP && l.gcpLogger != nil {
+		l.gcpLogger.Log(logging.Entry{
+			Severity: severity,
+			Payload:  msg,
+		})
+		_ = l.gcpLogger.Flush()
+	}
+
+	// Log to Zap if enabled.
+	if l.config.UseZap && l.zapLogger != nil {
+		switch level {
+		case DEBUG:
+			l.zapLogger.Debug(fmt.Sprintf("%v", msg))
+		case ERROR:
+			stacktrace := flattenStackTrace(string(debug.Stack()))
+			l.zapLogger.Error(fmt.Sprintf("%v | Stacktrace: %s", msg, stacktrace))
+		case INFO:
+			l.zapLogger.Info(fmt.Sprintf("%v", msg))
+		case WARNING:
+			l.zapLogger.Warn(fmt.Sprintf("%v", msg))
+		}
+	}
+}
+
+func flattenStackTrace(stack string) string {
+	// Replace newlines and tabs with a space to make it a single line
+	stack = strings.ReplaceAll(stack, "\n", " ")
+	stack = strings.ReplaceAll(stack, "\t", " ")
+	return stack
+}
+
+func (l *Logger) Close() error {
+	if l.config.UseGCP && l.gcpLogger != nil {
+		return l.gcpLogger.Flush()
+	}
+	return nil
+}
+
+func InitializeUniversalLogging() {
+	var err error
+
+	ULogConfigLogSys = LoggerConfig{
+		UseZap:    true,
+		UseGCP:    false,
+		ProjectID: GCPProjectName,
+		LogID:     StackDriverLoggerName,
+	}
+
+	ULogConfigLogGCP = LoggerConfig{
+		UseZap:    false,
+		UseGCP:    true,
+		ProjectID: GCPProjectName,
+		LogID:     StackDriverLoggerName,
+	}
+
+	ULogConfigLogSysAndGCP = LoggerConfig{
+		UseZap:    true,
+		UseGCP:    true,
+		ProjectID: GCPProjectName,
+		LogID:     StackDriverLoggerName,
+	}
+
+	LogSys, err = NewLogger(ULogConfigLogSys)
+	if err != nil {
+		log.Fatalf("__FATAL__ : failed to initialize logger : NewLogger(appdata.ULogConfigLogSys) : %v", err)
+	}
+
+	LogGCP, err = NewLogger(ULogConfigLogGCP)
+	if err != nil {
+		log.Fatalf("__FATAL__ : failed to initialize logger : NewLogger(appdata.ULogConfigLogGCP) : %v", err)
+	}
+
+	LogSysGCP, err = NewLogger(ULogConfigLogSysAndGCP)
+	if err != nil {
+		log.Fatalf("__FATAL__ : failed to initialize logger : NewLogger(appdata.ULogConfigLogSysAndGCP) : %v", err)
+	}
+
+	LogSysGCP.Log(INFO, "Initialized Universal Logger with GCP/UberZap Logger")
+}
+
+func main() {
+
+	InitializeUniversalLogging()
+
+	logData := LogData{
+		Component: "test",
+		MetaData:  []string{"test1", "test2", "test3"},
+	}
+
+	logData1 := LogData{
+		Operation: "exec_test",
+		MetaData:  []string{"test1", "test2", "test3"},
+	}
+
+	logData.Log(DEBUG, SYSTEM_GOOGLE)
+	logData1.Log(ERROR, SYSTEM_GOOGLE)
+
+	logData.Log(DEBUG, SYSTEM)
+	logData1.Log(ERROR, SYSTEM)
+
+	fmt.Println("Logs have been sent to the configured log destinations.")
 }
 ```

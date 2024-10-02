@@ -174,6 +174,8 @@
 
 [GCP StackDriver Logger V2](#gcp-stackdriver-logger-v2)
 
+[Calculate 99th Percentile](#calculate-99th-percentile)
+
 <hr/>
 
 #### [Setup Golang](#setup-golang)
@@ -13737,5 +13739,66 @@ func main() {
 	logData1.Log(ERROR, SYSTEM)
 
 	fmt.Println("Logs have been sent to the configured log destinations.")
+}
+```
+
+#### [Calculate 99th Percentile](#calculate-99th-percentile)
+
+```go
+package main
+
+import (
+	"fmt"
+	"math"
+	"sort"
+)
+
+func calculateStats(nums []int64) (min, max int64, avg float64, percentile99 int64) {
+	// Check for an empty slice
+	if len(nums) == 0 {
+		return 0, 0, 0, 0
+	}
+
+	// Initialize min and max
+	min, max = math.MaxInt64, math.MinInt64
+	var sum int64
+
+	for _, num := range nums {
+		// Update min and max
+		if num < min {
+			min = num
+		}
+		if num > max {
+			max = num
+		}
+		// Sum for average calculation
+		sum += num
+	}
+
+	// Calculate average
+	avg = float64(sum) / float64(len(nums))
+
+	// Sort the slice for percentile calculation
+	sort.Slice(nums, func(i, j int) bool { return nums[i] < nums[j] })
+
+	// Calculate the 99th percentile index
+	index := int(math.Ceil(0.99 * float64(len(nums)))) - 1
+
+	// 99th percentile value
+	percentile99 = nums[index]
+
+	return min, max, avg, percentile99
+}
+
+func main() {
+	// Sample slice of int64
+	nums := []int64{10, 20, 15, 30, 25, 50, 5, 100, 200, 300}
+
+	min, max, avg, percentile99 := calculateStats(nums)
+
+	fmt.Printf("Min: %d\n", min)
+	fmt.Printf("Max: %d\n", max)
+	fmt.Printf("Average: %.2f\n", avg)
+	fmt.Printf("99th Percentile: %d\n", percentile99)
 }
 ```

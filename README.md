@@ -176,6 +176,8 @@
 
 [Calculate 99th Percentile](#calculate-99th-percentile)
 
+[Thread Safe Cache With Eviction](#thread-safe-cache-with-eviction)
+
 <hr/>
 
 #### [Setup Golang](#setup-golang)
@@ -13800,5 +13802,140 @@ func main() {
 	fmt.Printf("Max: %d\n", max)
 	fmt.Printf("Average: %.2f\n", avg)
 	fmt.Printf("99th Percentile: %d\n", percentile99)
+}
+```
+
+#### [Thread Safe Cache With Eviction](#thread-safe-cache-with-eviction)
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+// SafeMapEntry holds the value and the timestamp of when the entry was added
+type SafeMapEntry struct {
+	Value     interface{}
+	Timestamp time.Time
+}
+
+// SafeMap is a thread-safe wrapper around a map with eviction capabilities
+type SafeMap struct {
+	data  map[string]SafeMapEntry
+	mutex sync.RWMutex
+	ttl   time.Duration
+}
+
+// NewSafeMap creates and returns a new SafeMap with a specified eviction duration
+func NewSafeMap(ttl time.Duration) *SafeMap {
+	sm := &SafeMap{
+		data: make(map[string]SafeMapEntry),
+		ttl:  ttl,
+	}
+	// Start eviction goroutine
+	go sm.evictExpiredEntries()
+	return sm
+}
+
+// Set adds or updates a key-value pair in the map with the current timestamp
+func (sm *SafeMap) Set(key string, value interface{}) {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+	sm.data[key] = SafeMapEntry{
+		Value:     value,
+		Timestamp: time.Now(),
+	}
+}
+
+// Get retrieves a value by key from the map
+func (sm *SafeMap) Get(key string) (interface{}, bool) {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+	entry, ok := sm.data[key]
+	if !ok {
+		return nil, false
+	}
+	// Return the value only if the entry has not expired
+	if time.Since(entry.Timestamp) < sm.ttl {
+		return entry.Value, true
+	}
+	// If expired, delete the entry
+	sm.mutex.RUnlock()
+	sm.mutex.Lock()
+	delete(sm.data, key)
+	sm.mutex.Unlock()
+	sm.mutex.RLock()
+	return nil, false
+}
+
+// Delete removes a key-value pair from the map
+func (sm *SafeMap) Delete(key string) {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+	delete(sm.data, key)
+}
+
+// evictExpiredEntries periodically checks and removes entries older than the TTL
+func (sm *SafeMap) evictExpiredEntries() {
+	for {
+		time.Sleep(sm.ttl / 2) // Run eviction periodically, e.g., every 5 minutes if ttl is 10 minutes
+		now := time.Now()
+
+		sm.mutex.Lock()
+		for key, entry := range sm.data {
+			if now.Sub(entry.Timestamp) > sm.ttl {
+				delete(sm.data, key)
+				fmt.Printf("Evicted key: %s\n", key)
+			}
+		}
+		sm.mutex.Unlock()
+	}
+}
+
+// Size returns the number of items in the map
+func (sm *SafeMap) Size() int {
+	sm.mutex.RLock()
+	defer sm.mutex.RUnlock()
+	return len(sm.data)
+}
+
+// Clear removes all key-value pairs from the map
+func (sm *SafeMap) Clear() {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+	sm.data = make(map[string]SafeMapEntry) // Reinitialize the map
+}
+
+func main() {
+	// Create a new SafeMap with a 10-minute TTL (Time to Live)
+	safeMap := NewSafeMap(10 * time.Minute)
+
+	// Set some key-value pairs
+	safeMap.Set("key1", "value1")
+	safeMap.Set("key2", 123)
+
+	// Simulate some waiting time (for demo purposes)
+	time.Sleep(5 * time.Second)
+
+	// Get values before they expire
+	if value, ok := safeMap.Get("key1"); ok {
+		fmt.Println("key1:", value)
+	} else {
+		fmt.Println("key1 has expired or does not exist")
+	}
+
+	// Wait until key1 and key2 are evicted after 10 minutes (simulated for testing purposes)
+	fmt.Println("Waiting for keys to be evicted...")
+	time.Sleep(12 * time.Minute) // Simulating time to pass
+
+	// Try getting the values after the TTL has passed
+	if value, ok := safeMap.Get("key1"); ok {
+		fmt.Println("key1:", value)
+	} else {
+		fmt.Println("key1 has expired or does not exist")
+	}
 }
 ```

@@ -178,6 +178,8 @@
 
 [Thread Safe Cache With Eviction](#thread-safe-cache-with-eviction)
 
+[GORM-IO Database Connections And Connection Pooling](#gorm-io-database-connections-and-connection-pooling)
+
 <hr/>
 
 #### [Setup Golang](#setup-golang)
@@ -13939,3 +13941,71 @@ func main() {
 	}
 }
 ```
+
+#### [GORM-IO Database Connections And Connection Pooling](#gorm-io-database-connections-and-connection-pooling)
+
+Using `gorm.io` Golang Package
+
+```go
+type PgRowDevView struct {
+	ResourceID string          `gorm:"column:resource_id"` // Maps to the resource_id column (TEXT)
+	Data       json.RawMessage `gorm:"column:data"`        // Maps to the data column (JSONB)
+}
+
+func InitDB() {
+	dsn := fmt.Sprintf("host=<REDACTED> user=<REDACTED> password=<REDACTED> dbname=<REDACTED> port=5432 sslmode=disable TimeZone=Asia/Shanghai")
+	var err error
+	db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("failed to connect to database: %v", err)
+	}
+
+	sqlDB, _ := db.DB()
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+
+	// Automatically create or migrate the schema
+	db.AutoMigrate(&PgRowDevView{})
+}
+```
+
+> Below Is The The Explanation For Setting These Parameters >
+
+```go
+sqlDB.SetMaxIdleConns(5)
+sqlDB.SetMaxOpenConns(10)
+sqlDB.SetConnMaxLifetime(5 * time.Minute)
+```
+
+1. Max Open Connections (SetMaxOpenConns(10)):
+
+ - This setting controls the maximum number of open connections to the database.
+ - Flow:
+    - When a client requests a new connection, the pool first checks if there is an available connection.
+    - If all open connections (up to 10) are in use, the pool will block new requests until an existing connection is returned or closed.
+    - Example: You can have at most 10 connections open at any time, whether they are idle or in use.
+
+2. Max Idle Connections (SetMaxIdleConns(5)):
+
+ - This setting determines the maximum number of idle connections that the pool will maintain.
+ - Flow:
+    -   If a connection is returned to the pool but the number of idle connections exceeds 5, the extra idle connections will be closed.
+    -   Example: Even though 10 connections can be open at once, only up to 5 can remain idle. If more than 5 are idle, the excess will be closed to save resources.
+
+3. Connection Max Lifetime (SetConnMaxLifetime(5 * time.Minute)):
+
+ - This setting controls how long a connection can be reused.
+ - Flow:
+    - Once a connection has been open for 5 minutes, it will be closed and removed from the pool, even if it is still idle or in use.
+    - Example: Even if a connection is idle and not exceeding the idle connection limit, it will be closed once it has lived for more than 5 minutes.
+
+> Putting it All Together
+
+1. A client requests a connection from the pool.
+2. If the pool has fewer than 10 open connections, it provides a new or idle connection.
+3. If there are more than 5 idle connections, the excess idle connections are closed.
+4. Connections are reused until they hit the 5-minute lifetime limit, after which they are closed.
+5. When all 10 connections are in use, new requests must wait until a connection is available.
+
+By carefully tuning these parameters, you can manage database resource consumption effectively while optimizing performance for your application.

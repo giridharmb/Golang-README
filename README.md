@@ -180,6 +180,8 @@
 
 [GORM-IO Database Connections And Connection Pooling](#gorm-io-database-connections-and-connection-pooling)
 
+[Golang WASM Web UI And Tailwind](https://github.com/giridharmb/golang-wasm-web-ui/blob/main/README.md)
+
 <hr/>
 
 #### [Setup Golang](#setup-golang)

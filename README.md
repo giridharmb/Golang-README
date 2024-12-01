@@ -182,6 +182,8 @@
 
 [Golang WASM Web UI And Tailwind](https://github.com/giridharmb/golang-wasm-web-ui/blob/main/README.md)
 
+[IP Port Check](#ip-port-check)
+
 <hr/>
 
 #### [Setup Golang](#setup-golang)
@@ -14074,4 +14076,118 @@ Example
 
 Conclusion
 
-The SetConnMaxLifetime setting should be tuned based on the specifics of your workload, environment, and database configuration. Start with a reasonable value like 30 minutes and monitor the impact on performance and stability, adjusting as necessary. Increasing or decreasing the value affects the balance between connection reuse (performance) and connection freshness (resiliency).
+The SetConnMaxLifetime setting should be tuned based on the specifics of your
+workload, environment, and database configuration. Start with a reasonable value
+like 30 minutes and monitor the impact on performance and stability, adjusting
+as necessary. Increasing or decreasing the value affects the balance between
+connection reuse (performance) and connection freshness (resiliency).
+
+#### [IP Port Check](#ip-port-check)
+
+> Usage
+
+Specific IP-Address And Port (`In Parallel`)
+
+```bash
+go run main.go -ipport "8.8.8.8:53 127.0.0.1:80"
+```
+
+For All IP Addresses And All Ports Combinations (`In Parallel`)
+
+```
+go run main.go -ips "8.8.8.8,127.0.0.1" -ports "53,80"
+```
+
+```go
+package main
+
+import (
+	"flag"
+	"fmt"
+	"net"
+	"strings"
+	"sync"
+	"time"
+)
+
+/*
+go run main.go -ipport "8.8.8.8:53 127.0.0.1:80"
+
+go run main.go -ips "8.8.8.8,127.0.0.1" -ports "53,80"
+*/
+
+type Result struct {
+	Address string
+	Status  string
+}
+
+func checkConnection(address string, timeout time.Duration) Result {
+	conn, err := net.DialTimeout("tcp", address, timeout)
+	if err != nil {
+		return Result{Address: address, Status: "Closed"}
+	}
+	conn.Close()
+	return Result{Address: address, Status: "Open"}
+}
+
+func checkAddresses(addresses []string, timeout time.Duration) []Result {
+	var wg sync.WaitGroup
+	results := make([]Result, len(addresses))
+	wg.Add(len(addresses))
+
+	for i, address := range addresses {
+		go func(i int, address string) {
+			defer wg.Done()
+			results[i] = checkConnection(address, timeout)
+		}(i, address)
+	}
+
+	wg.Wait()
+	return results
+}
+
+func parseIPsAndPorts(ips string, ports string) []string {
+	addresses := []string{}
+	ipList := strings.Split(ips, ",")
+	portList := strings.Split(ports, ",")
+	for _, ip := range ipList {
+		for _, port := range portList {
+			addresses = append(addresses, fmt.Sprintf("%s:%s", ip, port))
+		}
+	}
+	return addresses
+}
+
+func main() {
+	// Define flags
+	ipportFlag := flag.String("ipport", "", "Space-separated IP:PORT pairs (e.g., 192.168.1.1:80 192.168.1.2:443)")
+	ipsFlag := flag.String("ips", "", "Comma-separated IP addresses (e.g., 192.168.1.1,192.168.1.2)")
+	portsFlag := flag.String("ports", "", "Comma-separated ports (e.g., 80,443)")
+	timeoutFlag := flag.Int("timeout", 3, "Timeout in seconds for each connection check")
+	flag.Parse()
+
+	timeout := time.Duration(*timeoutFlag) * time.Second
+	addresses := []string{}
+
+	// Handle -ipport option
+	if *ipportFlag != "" {
+		addresses = strings.Fields(*ipportFlag)
+	} else if *ipsFlag != "" && *portsFlag != "" {
+		// Handle -ips and -ports options
+		addresses = parseIPsAndPorts(*ipsFlag, *portsFlag)
+	} else {
+		fmt.Println("Error: Provide either -ipport or both -ips and -ports.")
+		flag.Usage()
+		return
+	}
+
+	// Check the connections
+	results := checkAddresses(addresses, timeout)
+
+	// Display results
+	fmt.Println("Results:")
+	for _, result := range results {
+		fmt.Printf(" - %s: %s\n", result.Address, result.Status)
+	}
+}
+```

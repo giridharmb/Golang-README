@@ -184,6 +184,8 @@
 
 [IP Port Check](#ip-port-check)
 
+[Handling Panic And Recover With Stack Trace](#handling-panic-and-recover-with-stack-trace)
+
 <hr/>
 
 #### [Setup Golang](#setup-golang)
@@ -14189,5 +14191,261 @@ func main() {
 	for _, result := range results {
 		fmt.Printf(" - %s: %s\n", result.Address, result.Status)
 	}
+}
+```
+
+#### [Handling Panic And Recover With Stack Trace](#handling-panic-and-recover-with-stack-trace)
+
+> Approach-1
+
+```go
+package main
+
+import (
+    "log"
+    "runtime/debug"
+    "time"
+)
+
+func worker() {
+    // Simulate some work that might panic
+    panic("something went wrong in worker")
+}
+
+func runWithRecovery(f func()) {
+    defer func() {
+        if err := recover(); err != nil {
+            log.Printf("PANIC: %v\n%s", err, debug.Stack())
+            
+            // Restart the function after a delay
+            log.Println("Restarting worker in 5 seconds...")
+            time.Sleep(5 * time.Second)
+            go runWithRecovery(f)
+        }
+    }()
+    
+    f()
+}
+
+func main() {
+    // Start the worker in a goroutine with recovery
+    go runWithRecovery(worker)
+    
+    // Block forever using a channel
+    select {}
+}
+```
+
+> Approach-2
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "runtime/debug"
+    "time"
+    "sync"
+)
+
+func worker() {
+    // Simulate some work that might panic
+    panic("something went wrong in worker")
+}
+
+func runWithRecovery(f func()) {
+    defer func() {
+        if err := recover(); err != nil {
+            log.Printf("PANIC: %v\n%s", err, debug.Stack())
+            
+            // Restart the function after a delay
+            log.Println("Restarting worker in 5 seconds...")
+            time.Sleep(5 * time.Second)
+            go runWithRecovery(f)
+        }
+    }()
+    
+    f()
+}
+
+func main() {
+    // Start the worker in a goroutine with recovery
+    go runWithRecovery(worker)
+    
+    // Block forever
+    var wg sync.WaitGroup
+    wg.Add(1)
+    wg.Wait()
+}
+```
+
+> Approach-3
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "net/http"
+    "runtime/debug"
+    "time"
+)
+
+func recoveryMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        defer func() {
+            if err := recover(); err != nil {
+                // Print stack trace
+                log.Printf("PANIC: %v\n%s", err, debug.Stack())
+                
+                // Return 500 error
+                w.WriteHeader(http.StatusInternalServerError)
+                fmt.Fprintf(w, "Internal Server Error")
+            }
+        }()
+        next.ServeHTTP(w, r)
+    })
+}
+
+func startServer(port string, handler http.Handler) {
+    for {
+        // Create server with recovery middleware
+        srv := &http.Server{
+            Addr:    ":" + port,
+            Handler: recoveryMiddleware(handler),
+        }
+
+        // Start server
+        log.Printf("Server starting on port %s", port)
+        if err := srv.ListenAndServe(); err != nil {
+            log.Printf("Server error: %v", err)
+        }
+
+        // Wait before restart
+        log.Println("Server crashed. Restarting in 5 seconds...")
+        time.Sleep(5 * time.Second)
+    }
+}
+
+func main() {
+    // Create routes
+    mux := http.NewServeMux()
+    
+    mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        fmt.Fprintf(w, "Hello, World!")
+    })
+    
+    mux.HandleFunc("/panic", func(w http.ResponseWriter, r *http.Request) {
+        panic("Intentional panic for testing")
+    })
+
+    // Start server
+    startServer("8080", mux)
+}
+```
+
+> Approach-4
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "net/http"
+    "os"
+    "runtime/debug"
+    "time"
+)
+
+// Server represents our HTTP server configuration
+type Server struct {
+    port    string
+    handler http.Handler
+    logger  *log.Logger
+}
+
+// NewServer creates a new server instance
+func NewServer(port string, handler http.Handler) *Server {
+    return &Server{
+        port:    port,
+        handler: handler,
+        logger:  log.New(os.Stdout, "[SERVER] ", log.LstdFlags),
+    }
+}
+
+// recoveryMiddleware wraps an http.Handler with panic recovery
+func (s *Server) recoveryMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        defer func() {
+            if err := recover(); err != nil {
+                // Log the stack trace
+                stackTrace := debug.Stack()
+                s.logger.Printf("PANIC: %v\n%s", err, stackTrace)
+
+                // Return a 500 Internal Server Error
+                w.WriteHeader(http.StatusInternalServerError)
+                fmt.Fprintf(w, "Internal Server Error")
+
+                // Optionally notify external monitoring service
+                go s.notifyMonitoring(err, stackTrace)
+            }
+        }()
+        next.ServeHTTP(w, r)
+    })
+}
+
+// notifyMonitoring sends error details to a monitoring service
+func (s *Server) notifyMonitoring(err interface{}, stackTrace []byte) {
+    // Implement your monitoring service integration here
+    // Example: send to error tracking service, Slack, etc.
+    s.logger.Printf("Notifying monitoring service about panic: %v", err)
+}
+
+// Start begins the server and handles automatic restarts
+func (s *Server) Start() {
+    for {
+        // Create a new server with recovery middleware
+        srv := &http.Server{
+            Addr:    ":" + s.port,
+            Handler: s.recoveryMiddleware(s.handler),
+        }
+
+        // Start the server in a goroutine
+        serverChan := make(chan error, 1)
+        go func() {
+            s.logger.Printf("Server starting on port %s", s.port)
+            serverChan <- srv.ListenAndServe()
+        }()
+
+        // Wait for server error
+        err := <-serverChan
+        s.logger.Printf("Server error: %v", err)
+
+        // Wait before attempting restart
+        s.logger.Println("Waiting 5 seconds before restarting...")
+        time.Sleep(5 * time.Second)
+    }
+}
+
+// Example usage with a basic router
+func main() {
+    // Create a simple router
+    mux := http.NewServeMux()
+    
+    // Add some example routes
+    mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+        fmt.Fprintf(w, "Hello, World!")
+    })
+    
+    mux.HandleFunc("/panic", func(w http.ResponseWriter, r *http.Request) {
+        panic("Intentional panic for testing")
+    })
+
+    // Create and start the server
+    server := NewServer("8080", mux)
+    server.Start()
 }
 ```

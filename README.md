@@ -1,4 +1,4 @@
-### Golang Snippets
+### Golang Code
 
 [Setup Golang](#setup-golang)
 
@@ -188,7 +188,7 @@
 
 ---
 
-[SAGA Pattern](https://github.com/giridharmb/Golang-README/blob/main/SAGA-pattern.md)
+[SAGA Pattern](https://github.com/giridharmb/Golang-README/blob/master/SAGA-pattern.md)
 
 <hr/>
 
